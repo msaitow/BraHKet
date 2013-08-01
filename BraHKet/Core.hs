@@ -33,6 +33,7 @@ module BraHKet.Core
   baseERI,     -- Two-body int
   baseSFGen,   -- Spin-free generator
   baseSFRDM,   -- Spin-free density-matrix
+  baseSDGen,   -- Spin-dependent generator  
   baseCre,     -- Creation operator
   baseDes,     -- Destruction operator
   tsortIndices,
@@ -48,7 +49,8 @@ module BraHKet.Core
   rotateAllIndices,
   generateAllConfs,
   killKDeltas,
-  normalOrderOp
+  normalOrderOp,
+  normalOrderG
 ) where
 
 import qualified BraHKet.Utils as Utils 
@@ -475,25 +477,32 @@ gMap (i:is) num
 
 ---------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------
--- Normal ordering function
+-- Normal ordering function for creation and annihilation operators
 normalOrderOp :: QTerm -> QTerms
-normalOrderOp term = zipWith (makeTerm) signs kDeltas
+normalOrderOp term = if length cres == length des then zipWith (makeTerm) signs kDeltas else error "normalOrderOp: Numbers of creation and annihilation operators should be equal for the current implementation"
   where
     tensors   = tTensor term
     operators = [x | x <- tensors, tLabel x == "Cre" || tLabel x == "Des"]
     others    = [x | x <- tensors, tLabel x /= "Cre" && tLabel x /= "Des"]
-    -- rev_ops   = reverse operators
     cres      = [x | x <- operators, tLabel x == "Cre"]
     des       = [x | x <- operators, tLabel x == "Des"]
     contPairs = [(x, y) | x <- cres, y <- des]
 
     -- Actually survived contraction pairs
-    survivedPairs = filter (makeAllOps) $ Utils.binCombi (length cres) contPairs
+    survivedPairs = fmap (fmap reorderOps) $ filter (makeAllOps) $ Utils.binCombi (length cres) contPairs
     flatPairs     = fmap Utils.makeFlat survivedPairs
     signs         = fmap (Utils.permuteSign operators) flatPairs
 
     kDeltas = fmap (fmap makekDeltas) survivedPairs
 
+    -- Returns proper contraction pairs (assuming all index pairs are composed of one creation and one annihilation operators)
+    reorderOps :: (QTensor, QTensor) -> (QTensor, QTensor)
+    reorderOps (op1, op2)
+      | iSpace ((tIndices op1) !! 0) == Virtual && iSpace ((tIndices op2) !! 0) == Virtual = (op2, op1)
+      | iSpace ((tIndices op1) !! 0) == Generic && iSpace ((tIndices op2) !! 0) == Virtual = (op2, op1)
+      | iSpace ((tIndices op1) !! 0) == Virtual && iSpace ((tIndices op2) !! 0) == Generic = (op2, op1)
+      | otherwise = (op1, op2)
+                                                                                         
     makeTerm :: Int -> QTensors -> QTerm
     makeTerm sign kDs = QTerm ((fromIntegral sign)*(tNum term)) (tCoeff term) (others ++ kDs)
 
@@ -506,3 +515,86 @@ normalOrderOp term = zipWith (makeTerm) signs kDeltas
         makeCre kore = (List.sort $ fmap (fst) kore) == List.sort cres
         makeDes are  = (List.sort $ fmap (snd) are)  == List.sort des
 
+
+---------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------
+-- Normal ordering function for spin-dependent excitation operators
+normalOrderG :: QTerm -> QTerms
+normalOrderG term = zipWith (makeTerm) signs kDeltas
+  where
+    tensors   = tTensor term
+    operators = [x | x <- tensors, (tLabel x) !! 0 == 'G']
+    others    = [x | x <- tensors, (tLabel x) !! 0 /= 'G']
+    creOrders = [floor $ (fromIntegral . length $ tIndices x)/2 | x <- operators]
+    desOrders = fmap (\x -> 2 * x) creOrders
+
+    -- Extract groups of creation and annihilation operators of generator
+    creGroup = fmap (transformCre) operators
+    desGroup = fmap (transformDes) operators
+    opGroup  = fmap (transformBoth) operators
+
+    cres = concat creGroup
+    des  = concat desGroup
+    ops  = concat opGroup
+    conPairs = [(x, y) | x <- cres, y <- des]
+
+    -- List of fully-contracted operator pairs 
+    survivedPairs = fmap (fmap reorderOps) $ filter (makeAllOps) $ Utils.binCombi (length cres) conPairs
+    deadPairs = concat $ fmap (makeDeadPairs) opGroup
+    allPairs = filter (isAlive) survivedPairs
+    
+    flatPairs = fmap Utils.makeFlat allPairs
+    signs     = fmap (Utils.permuteSign ops) flatPairs
+
+    kDeltas = fmap (fmap makekDeltas) allPairs
+
+    -- Returns proper contraction pairs (assuming all index pairs are composed of one creation and one annihilation operators)
+    reorderOps :: (QIndex, QIndex) -> (QIndex, QIndex)
+    reorderOps (op1, op2)
+      | iSpace op1 == Virtual && iSpace op2 == Virtual = (op2, op1)
+      | iSpace op1 == Generic && iSpace op2 == Virtual = (op2, op1)
+      | iSpace op1 == Virtual && iSpace op2 == Generic = (op2, op1)
+      | otherwise = (op1, op2)
+
+    -- If contras contains either f the dear pairs, contras vanish
+    isAlive :: [(QIndex, QIndex)] -> Bool
+    isAlive contras = not $ allNothing deadPairs
+      where
+        allNothing [x]    = x `elem` contras
+        allNothing (x:xs) = x `elem` contras || allNothing xs
+
+    -- Make list of intra-group contractions
+    makeDeadPairs :: QIndices -> [(QIndex, QIndex)]
+    makeDeadPairs opList =
+      let
+        order = floor $ (fromIntegral . length $ opList)/2
+        creOps = take order opList
+        desOps = take order $ reverse opList
+      in [(x,y) | x <- creOps, y <- desOps]
+    
+    transformCre :: QTensor -> QIndices
+    transformCre sdGen = 
+      let
+        order = floor $ (fromIntegral $ length $ tIndices sdGen) / (fromIntegral 2)
+      in take order (tIndices sdGen)
+
+    transformDes :: QTensor -> QIndices
+    transformDes sdGen = 
+      let
+        order = floor $ (fromIntegral $ length $ tIndices sdGen) / (fromIntegral 2)
+      in take order $ reverse (tIndices sdGen)
+
+    transformBoth :: QTensor -> QIndices
+    transformBoth sdGen = (transformCre sdGen) ++ (transformDes sdGen)
+
+    makeAllOps :: [(QIndex, QIndex)] -> Bool
+    makeAllOps contras = (makeCre contras) && (makeDes contras)
+      where
+        makeCre kore = (List.sort $ fmap (fst) kore) == List.sort cres
+        makeDes are  = (List.sort $ fmap (snd) are)  == List.sort des
+
+    makeTerm :: Int -> QTensors -> QTerm
+    makeTerm sign kDs = QTerm ((fromIntegral sign)*(tNum term)) (tCoeff term) (others ++ kDs)
+
+    makekDeltas :: (QIndex, QIndex) -> QTensor
+    makekDeltas (ind1, ind2) = baseKD $ ind1 : ind2 : []

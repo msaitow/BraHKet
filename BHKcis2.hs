@@ -16,20 +16,16 @@ main = do
     s = QIndex "S" Generic True           
 
     -- Creaton and annihilation operators
-    iC = baseCre i
-    aD = baseDes a
-    pC = baseCre p
-    qC = baseCre q
-    sD = baseDes s
-    rD = baseDes r
-    bC = baseCre b
-    jD = baseDes j
-
+    eL = baseSDGen [i, a]
+    eH = baseSDGen [p, q, r, s]
+    eR = baseSDGen [b, j]
+    
     -- Declaraton for tensors
     v = baseERI [p, q, r, s]
     t = baseTensor "T1" [b, j] [[0,1],[1,0]] True
-    term = baseTerm 1 [] [iC, aD, pC, qC, sD, rD, bC, jD]
-    ordered = normalOrderOp term
+    term = baseTerm 0.5 [] [v, eL, eH, eR, t]
+    --term = baseTerm 1 [] [eL, eH, eR]
+    ordered = normalOrderG term
     killed = fmap (killKDeltas) ordered
     -- survived = filter (\x -> x /= Nothing) $ fmap (\x -> if x /= Nothing then fromJust x else id x) killed
   print $ "inTerm   : " ++ (show term)
