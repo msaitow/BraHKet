@@ -42,13 +42,15 @@ module BraHKet.Core
   -- Functions for QTerm data
   QTerm(..),
   baseTerm,      -- Generic term
-  getSummedBody, 
+  getSummedBody,
+  isAdditive,
   masquerade,
   allRenames,
   rotateTensors,
   rotateAllIndices,
   generateAllConfs,
   killKDeltas,
+  combineTerms,
   normalOrderOp,
   normalOrderG
 ) where
@@ -236,6 +238,10 @@ baseTerm num coeff tensors = QTerm num coeff (commutatives ++ incommutatives)
 getSummedBody :: QTerm -> QIndices
 getSummedBody term = List.nub . concat $ map (tIndices) $ (tTensor term)
 
+-- Returns two terms are additive or nor
+isAdditive :: QTerm -> QTerm -> Bool
+isAdditive kore are = ((tCoeff kore) == (tCoeff are)) && ((tTensor kore) == (tTensor are))
+
 -- Rename all the dummy indices
 masquerade :: QTerm -> QTerm
 masquerade t = QTerm (tNum t) (tCoeff t) ten
@@ -405,6 +411,23 @@ killKDeltas term = if foldr (||) False $ fmap isZero kdList then Nothing else Ju
     exceptkDeltas = [x | x <- newTensors, not (tLabel x == "kD" && (tIndices x) !! 0 == (tIndices x) !! 1)]
     --exceptkDeltas = [x | x <- newTensors]    
 
+-- Function to return the combined terms. This can be implemented by using State monad more elegantly?
+combineTerms :: QTerms -> QTerms
+combineTerms terms = fmap (changeFactors) origTerms
+  where
+    maxTerms = fmap (maximum . generateAllConfs) terms
+    origTerms = List.nub maxTerms
+
+    changeFactors :: QTerm -> QTerm
+    changeFactors are = baseTerm myFactor (tCoeff are) (tTensor are)
+      where myFactor = collectFactors are maxTerms
+
+    collectFactors :: QTerm -> QTerms -> Double
+    collectFactors kore korera = 
+      let
+        arera = [x | x <- korera, isAdditive kore x]
+      in sum $ fmap (tNum) arera
+
 ---------------------------------------------------------------------------------------------
 -- Small utilities
 ---------------------------------------------------------------------------------------------
@@ -479,7 +502,9 @@ gMap (i:is) num
 ---------------------------------------------------------------------------------------------
 -- Normal ordering function for creation and annihilation operators
 normalOrderOp :: QTerm -> QTerms
-normalOrderOp term = if length cres == length des then zipWith (makeTerm) signs kDeltas else error "normalOrderOp: Numbers of creation and annihilation operators should be equal for the current implementation"
+normalOrderOp term =
+  if length cres == length des then zipWith (makeTerm) signs kDeltas
+  else error "normalOrderOp: Numbers of creation and annihilation operators should be equal for the current implementation"
   where
     tensors   = tTensor term
     operators = [x | x <- tensors, tLabel x == "Cre" || tLabel x == "Des"]
@@ -525,8 +550,6 @@ normalOrderG term = zipWith (makeTerm) signs kDeltas
     tensors   = tTensor term
     operators = [x | x <- tensors, (tLabel x) !! 0 == 'G']
     others    = [x | x <- tensors, (tLabel x) !! 0 /= 'G']
-    creOrders = [floor $ (fromIntegral . length $ tIndices x)/2 | x <- operators]
-    desOrders = fmap (\x -> 2 * x) creOrders
 
     -- Extract groups of creation and annihilation operators of generator
     creGroup = fmap (transformCre) operators
@@ -598,3 +621,12 @@ normalOrderG term = zipWith (makeTerm) signs kDeltas
 
     makekDeltas :: (QIndex, QIndex) -> QTensor
     makekDeltas (ind1, ind2) = baseKD $ ind1 : ind2 : []
+
+
+ -- ---------------------------------------------------------------------------------------------
+ -- ---------------------------------------------------------------------------------------------
+ -- -- Normal ordering function for spin-free excitaiton operators 
+ -- normalOrderE :: QTerm -> QTerms
+ -- normalOrderE term = zipWith (makeTerm) signs kDeltas
+ --   where
+    
