@@ -21,6 +21,15 @@
 
 module BraHKet.Core
 (
+  -- Predefined names for various tensors
+  creName_,   -- Creation operators
+  desName_,   -- Destruction operators 
+  sfGenName_, -- Spin-free generators
+  sfRDMName_, -- Spin-free density
+  sdGenName_, -- Spin-dependent generator
+  kDName_,    -- Kronecker's delta
+  h1Name_,    -- One-body int
+  h2Name_,    -- Two-body int
   -- Functions for QSpace data
   QSpace(..),
   -- Functions for QIndex data
@@ -75,6 +84,18 @@ type QTerms   = [QTerm]
 -- ///////////////////////////////////////////////////////////////////////
 
 -------------------------------------------------------------------------
+-- @@ Tensor names
+-------------------------------------------------------------------------
+creName_   = "@Cre" :: String -- Creation operator
+desName_   = "@Des" :: String -- Destruction operator 
+sfGenName_ = "@E"   :: String -- Spin-free generator
+sfRDMName_ = "@D"   :: String -- Spin-free density
+sdGenName_ = "@G"   :: String -- Spin-dependent generator
+kDName_    = "@kD"  :: String -- Kronecker's delta
+h1Name_    = "@h1"  :: String -- One-body int
+h2Name_    = "@V2"  :: String -- Two-body int
+
+-------------------------------------------------------------------------
 -- @@ Orbital space
 -------------------------------------------------------------------------
 data QSpace = Core | Active | Virtual | Generic deriving(Show, Eq, Ord)
@@ -125,7 +146,7 @@ baseTensor label indices symm iscomm
 baseOne :: QIndices -> QTensor
 baseOne inds
   | length inds /= 2 = error "QTensor: Length of indices for kinetic operator should be 2."
-  | otherwise = QTensor "h1" inds eriPerms True
+  | otherwise = QTensor h1Name_ inds eriPerms True
   where eriPerms =
           let hSource = [[0,1],[1,0]]
           in Utils.makePerms hSource
@@ -134,14 +155,14 @@ baseOne inds
 baseKD :: QIndices -> QTensor
 baseKD inds
   | length inds /= 2 = error "QTensor: Length of indices for Kronecker's delta shoud be 2."
-  | otherwise = QTensor "kD" inds kDPerm True
+  | otherwise = QTensor kDName_ inds kDPerm True
   where kDPerm = [[0,1],[1,0]]
 
 -- Constructor for the two-body integral tensor
 baseERI :: QIndices -> QTensor
 baseERI inds
   | length inds /= 4 = error "QTensor: Length of indices for ERI should be 4."
-  | otherwise = QTensor "V2" inds eriPerms True
+  | otherwise = QTensor h2Name_ inds eriPerms True
   where eriPerms =
           let eriSource = [[0,1,2,3],[2,1,0,3],[0,3,2,1],[1,0,3,2]]
           in Utils.makePerms eriSource
@@ -153,7 +174,7 @@ baseSFGen inds
   | otherwise = QTensor name inds genPerm False
   where
     order = floor $ (fromIntegral $ length inds) / (fromIntegral 2)
-    name  = "E" ++ (show order)
+    name  = sfGenName_ ++ (show order)
     genPerm = Utils.makePermSFGen order
 
 -- Constructor for the spin-dependent unitary group generator
@@ -163,7 +184,7 @@ baseSDGen inds
   | otherwise = QTensor name inds genPerm False
   where
     order = floor $ (fromIntegral $ length inds) / (fromIntegral 2)
-    name  = "G" ++ (show order)
+    name  = sdGenName_ ++ (show order)
     genPerm = Utils.makePermSFGen order
 
 -- Constructor for the spin-free reduced-density matrix
@@ -173,16 +194,16 @@ baseSFRDM inds
   | otherwise = QTensor name inds genPerm True
   where
     order = floor $ (fromIntegral $ length inds) / (fromIntegral 2)
-    name  = "D" ++ (show order)
+    name  = sfRDMName_ ++ (show order)
     genPerm = Utils.makePermSFRDM order
 
 -- Constructor for the creation operator
 baseCre :: QIndex -> QTensor
-baseCre ind = QTensor "Cre" [ind] [[0]] False
+baseCre ind = QTensor creName_ [ind] [[0]] False
 
 -- Constructor for the destruction operator
 baseDes :: QIndex -> QTensor
-baseDes ind = QTensor "Des" [ind] [[0]] False
+baseDes ind = QTensor desName_ [ind] [[0]] False
 
 -- -- Returns normal-ordered QTensor
 -- tsortIndices :: QTensor -> QTensor
@@ -375,7 +396,7 @@ killKDeltas term = if foldr (||) False $ fmap isZero kdList then Nothing else Ju
   where
     -- First, construct a Map [(killed Index, killer Index)]
     tensors = tTensor term
-    kdList  = [x | x <- tensors, tLabel x == "kD"]
+    kdList  = [x | x <- tensors, tLabel x == kDName_]
 
     isZero :: QTensor -> Bool
     isZero kd =
@@ -408,7 +429,7 @@ killKDeltas term = if foldr (||) False $ fmap isZero kdList then Nothing else Ju
       where
         inds = fmap (replaceInds) $ tIndices tenten
         replaceInds i = if Map.lookup i mkMap == Nothing then i  else Maybe.fromJust $ Map.lookup i mkMap
-    exceptkDeltas = [x | x <- newTensors, not (tLabel x == "kD" && (tIndices x) !! 0 == (tIndices x) !! 1)]
+    exceptkDeltas = [x | x <- newTensors, not (tLabel x == kDName_ && (tIndices x) !! 0 == (tIndices x) !! 1)]
     --exceptkDeltas = [x | x <- newTensors]    
 
 -- Function to return the combined terms. This can be implemented by using State monad more elegantly?
@@ -416,7 +437,10 @@ combineTerms :: QTerms -> QTerms
 combineTerms terms = fmap (changeFactors) origTerms
   where
     maxTerms = fmap (maximum . generateAllConfs) terms
-    origTerms = List.nub maxTerms
+    origTerms = List.nub $ fmap (makeUniTerm) maxTerms
+
+    makeUniTerm :: QTerm -> QTerm 
+    makeUniTerm kore = QTerm 1.0 (tCoeff kore) (tTensor kore)
 
     changeFactors :: QTerm -> QTerm
     changeFactors are = baseTerm myFactor (tCoeff are) (tTensor are)
@@ -507,10 +531,10 @@ normalOrderOp term =
   else error "normalOrderOp: Numbers of creation and annihilation operators should be equal for the current implementation"
   where
     tensors   = tTensor term
-    operators = [x | x <- tensors, tLabel x == "Cre" || tLabel x == "Des"]
-    others    = [x | x <- tensors, tLabel x /= "Cre" && tLabel x /= "Des"]
-    cres      = [x | x <- operators, tLabel x == "Cre"]
-    des       = [x | x <- operators, tLabel x == "Des"]
+    operators = [x | x <- tensors, tLabel x == creName_ || tLabel x == desName_]
+    others    = [x | x <- tensors, tLabel x /= creName_ && tLabel x /= desName_]
+    cres      = [x | x <- operators, tLabel x == creName_]
+    des       = [x | x <- operators, tLabel x == desName_]
     contPairs = [(x, y) | x <- cres, y <- des]
 
     -- Actually survived contraction pairs
@@ -526,6 +550,7 @@ normalOrderOp term =
       | iSpace ((tIndices op1) !! 0) == Virtual && iSpace ((tIndices op2) !! 0) == Virtual = (op2, op1)
       | iSpace ((tIndices op1) !! 0) == Generic && iSpace ((tIndices op2) !! 0) == Virtual = (op2, op1)
       | iSpace ((tIndices op1) !! 0) == Virtual && iSpace ((tIndices op2) !! 0) == Generic = (op2, op1)
+      | iSpace ((tIndices op1) !! 0) == Active  || iSpace ((tIndices op2) !! 0) == Active  = error "normalOrderOp: Can't handle index for the active MOs"
       | otherwise = (op1, op2)
                                                                                          
     makeTerm :: Int -> QTensors -> QTerm
@@ -548,8 +573,8 @@ normalOrderG :: QTerm -> QTerms
 normalOrderG term = zipWith (makeTerm) signs kDeltas
   where
     tensors   = tTensor term
-    operators = [x | x <- tensors, (tLabel x) !! 0 == 'G']
-    others    = [x | x <- tensors, (tLabel x) !! 0 /= 'G']
+    operators = [x | x <- tensors, take (length sdGenName_) (tLabel x) == sdGenName_]
+    others    = [x | x <- tensors, take (length sdGenName_) (tLabel x) /= sdGenName_]
 
     -- Extract groups of creation and annihilation operators of generator
     creGroup = fmap (transformCre) operators
@@ -577,6 +602,7 @@ normalOrderG term = zipWith (makeTerm) signs kDeltas
       | iSpace op1 == Virtual && iSpace op2 == Virtual = (op2, op1)
       | iSpace op1 == Generic && iSpace op2 == Virtual = (op2, op1)
       | iSpace op1 == Virtual && iSpace op2 == Generic = (op2, op1)
+      | iSpace op1 == Active  || iSpace op2 == Active  = error "normalOrderG: Can't handle index for the active MOs"
       | otherwise = (op1, op2)
 
     -- If contras contains either f the dear pairs, contras vanish
@@ -623,10 +649,34 @@ normalOrderG term = zipWith (makeTerm) signs kDeltas
     makekDeltas (ind1, ind2) = baseKD $ ind1 : ind2 : []
 
 
- -- ---------------------------------------------------------------------------------------------
- -- ---------------------------------------------------------------------------------------------
- -- -- Normal ordering function for spin-free excitaiton operators 
- -- normalOrderE :: QTerm -> QTerms
- -- normalOrderE term = zipWith (makeTerm) signs kDeltas
- --   where
-    
+-- ---------------------------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------------------------
+-- -- Normal ordering function for spin-free excitaiton operators 
+-- normalOrderE :: QTerm -> QTerms
+-- normalOrderE term = -- zipWith (makeTerm) signs kDeltas
+--   where
+--     tensors   = tTensor term
+--     operators = [x | x <- tensors, take (length sfGenName_) (tLabel x) == sfGenName_]
+--     others    = [x | x <- tensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
+-- 
+--     -- Eveluate the order of contractionn of the generators
+--     numEs          = length operators
+--     contraSchedule = reverse [(x,y) | x <- [1..numEs], y <- [1..numEs], (x == y-1)]
+-- 
+--     -- Contract given generators
+--     contractGen :: (QTensor, QTensor) -> QTensors
+--     contarctGen (e1, e2) =
+--       where
+--         order1    = floor $ (fromIntegral $ length $ tIndices e1) / (fromIntegral 2)
+--         order2    = floor $ (fromIntegral $ length $ tIndices e2) / (fromIntegral 2)
+--         upperInds1 = take (order1) (tIndices e1)
+--         upperInds2 = take (order2) (tIndices e2)
+--         lowerInds1 = reverse $ take (order1) $ reverse (tIndices e1)
+--         lowerInds2 = reverse $ take (order2) $ reverse (tIndices e2) 
+-- 
+--         contPairs = [(x, y) | x <- lowerInds1, y <-upperInds2]
+--         -- Returns contracted operators [input; contraction order]
+--         makeContractions :: Int -> [QTensors]
+--         makeContractions myOrder =
+--           where
+--             myContractions = Utils.binCombi myOrder contPairs
