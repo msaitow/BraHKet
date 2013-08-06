@@ -2,6 +2,7 @@
 module BraHKet.Utils
 (
   makeFlat,      -- Returns flattered list of pairs
+  makeFlat2,     -- Returns flattered list of pairs
   allDiff,       -- Returns true if all the elements are different from the others
   binCombi,      -- Returns a binomial combination
   permuteSign,   -- Returns a sign of permutations
@@ -16,6 +17,12 @@ module BraHKet.Utils
 
 import Data.List
 import qualified Data.Maybe as Maybe
+
+
+-- Make flattered list like
+-- [(i1,e1),(i2,e2)..(in,en)] => [i1,i2..in,e1,e2..en]
+makeFlat2 :: (Ord a) => [(a, a)] -> [a]
+makeFlat2 pairs = (fmap fst pairs) ++ (fmap snd pairs)
 
 -- Make flattered list of pairs
 makeFlat :: (Ord a) => [(a, a)] -> [a]
