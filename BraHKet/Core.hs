@@ -30,10 +30,13 @@ module BraHKet.Core
   kDName_,    -- Kronecker's delta
   h1Name_,    -- One-body int
   h2Name_,    -- Two-body int
+
   -- Functions for QSpace data
   QSpace(..),
+
   -- Functions for QIndex data
   QIndex(..),
+
   -- Functions for QTensor data
   QTensor(..),
   baseTensor,  -- Generic tensor
@@ -48,6 +51,7 @@ module BraHKet.Core
   tsortIndices,
   tallPermInds,
   tgetConfs,
+
   -- Functions for QTerm data
   QTerm(..),
   baseTerm,      -- Generic term
@@ -60,9 +64,10 @@ module BraHKet.Core
   generateAllConfs,
   killKDeltas,
   combineTerms,
-  normalOrderOp,
-  normalOrderG,
-  normalOrderE
+  normalOrderA, -- NO for Cre/Des operators
+  normalOrderG, -- NO for spin-dependent generator
+  normalOrderE, -- NO for spin-free generator
+  takeVEV
 ) where
 
 import qualified BraHKet.Utils as Utils 
@@ -526,8 +531,8 @@ gMap (i:is) num
 ---------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------
 -- Normal ordering function for creation and annihilation operators
-normalOrderOp :: QTerm -> QTerms
-normalOrderOp term =
+normalOrderA :: QTerm -> QTerms
+normalOrderA term =
   if length cres == length des then zipWith (makeTerm) signs kDeltas
   else error "normalOrderOp: Numbers of creation and annihilation operators should be equal for the current implementation"
   where
@@ -654,47 +659,33 @@ normalOrderG term = zipWith (makeTerm) signs kDeltas
 ---------------------------------------------------------------------------------------------
 -- Normal ordering function for spin-free excitaiton operators
 normalOrderE :: QTerm -> QTerms
---normalOrderE term = -- zipWith (makeTerm) signs kDeltas
---normalOrderE term = contractGen term
-normalOrderE term = contractGen term
+normalOrderE term = iterateNormalOrder restEops [initTerm]
   where
-
---     tensors   = tTensor term
---     operators = [x | x <- tensors, take (length sfGenName_) (tLabel x) == sfGenName_]
---     others    = [x | x <- tensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
--- 
---     -- Eveluate the order of contractionn of the generators
---     numEs          = length operators
---     contraSchedule = reverse [(x,y) | x <- [1..numEs], y <- [1..numEs], (x == y-1)]
--- 
---     initPair = (operators !! (length operators $ - 2), operators !! (length operators $ - 1))
---     secondResult = contractGen initPairs
---     stacks = fmap makeEPairs secondPairs
---     
---     --            Tensors  -> (others, (E1, E2))
---     makeEPairs :: QTensors -> (QTensors, (QTensor, QTensor))
---     makeEPairs konoTensors = if length es /= 2 then error "normalOrderE: Algorithmic error" else (hoka, (es[0], es[1]))
---       where
---         hoka = [x | x <- konoTensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
---         es   = [x | x <- konoTensors, take (length sfGenName_) (tLabel x) == sfGenName_]
-
+    tensors   = tTensor term
     operators = [x | x <- tensors, take (length sfGenName_) (tLabel x) == sfGenName_]
     others    = [x | x <- tensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
-    initTensors = others ++ [operators !! (length operators-1)]
-    restEops    = take (length operators-1) operators
-    numSteps    = (length operators) - 1
+    otherOps  = [x | x <- others, (take (length sdGenName_) (tLabel x) == sdGenName_) || tLabel x == creName_ || tLabel x == desName_]
+    initTerm  = makeTerm' $ others ++ [operators !! (length operators-1)]
+    restEops  = take (length operators-1) operators
+    numSteps  = (length operators) - 1
 
     iterateNormalOrder :: QTensors -> QTerms -> QTerms
     iterateNormalOrder restEs currentTerms
       | length restEs == 0 = currentTerms
-      | otherwise
+      | otherwise          = iterateNormalOrder (init restEs) orderedTerms
       where
-        myTensors = replicate 
-          
-    -- Contract given generators -- It's working!!
+        newTensors   = zipWith (:) ( replicate (length currentTerms) (last restEs) ) $ fmap (tTensor) currentTerms
+        newTerms     = fmap (makeTerm') newTensors -- :: QTerms
+        orderedTerms = concat $ fmap (contractGen) newTerms
+        
+    -- Returns terms with correct prefactors and tensors
+    makeTerm' :: QTensors -> QTerm
+    makeTerm' tenten = baseTerm (tNum term) (tCoeff term) (tenten)
+
+    -- Contract given two generators -- It's working!!
     contractGen :: QTerm -> QTerms
     contractGen thisTerm
-      | (length incommutables) >  2 = error "contractGen: Length of operators given should be 2"
+      | (length incommutables) >  2 = error "contractGen: Length of operators given should be lower than 2."
       | (length incommutables) == 2 = concat . fmap (fmap makeTerm) $ fmap (makeContractions) [0..(min order1 order2)]
       | otherwise                   = [thisTerm]
       where
@@ -710,7 +701,7 @@ normalOrderE term = contractGen term
         lowerInds1 = reverse $ take (order1) $ reverse (tIndices e1)
         lowerInds2 = reverse $ take (order2) $ reverse (tIndices e2) 
 
-        -- Lower indices of e1 and uper indices of e2 are contracted
+        -- Lower indices of e1 and upper indices of e2 are contracted
         contPairs = [(x, y) | x <- lowerInds1, y <- upperInds2]
         e1PairInds = Map.fromList $ zip lowerInds1 upperInds1  -- -> Lower indices are keys -> Upper indices
         e2PairInds = Map.fromList $ zip upperInds2 lowerInds2  -- -> Upper indices are keys -> Lower indices
@@ -723,8 +714,8 @@ normalOrderE term = contractGen term
 
         -- Returns terms with correct prefactors and tensors
         makeTerm :: QTensors -> QTerm
-        makeTerm tenten = baseTerm (tNum term) (tCoeff term) tenten
-        
+        makeTerm tenten = baseTerm (tNum term) (tCoeff term) (commutables ++ tenten)
+
         -- Returns contracted operators [input; contraction order]
         makeContractions :: Int -> [QTensors]
         makeContractions myOrder = filter (isAppropriate) $ zipWith (:) (fmap (baseSFGen) $ fmap (Utils.makeFlat2) totalInds) kDeltas
@@ -764,3 +755,25 @@ normalOrderE term = contractGen term
               where
                 myIndices = concat $ fmap (tIndices) tenten
             
+
+---------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------
+-- Construct spin-free density matrix from the normal ordered spin-free generators by taking the vacuum expectaiton values
+takeVEV :: QTerms -> QTerms
+takeVEV terms = fmap Maybe.fromJust $ filter (\x -> x /= Nothing) $ fmap (uniVEV) terms
+  where
+    -- VEV for one term
+    uniVEV :: QTerm -> Maybe QTerm
+    uniVEV term
+      | length sfOps > 1 = Just term
+      | otherwise        = if Virtual `elem` allSpaces then Nothing else Just newTerm
+      where
+        tensors = tTensor term
+        sfOps = [x | x <- tensors, take (length sfGenName_) (tLabel x) == sfGenName_]
+        allSpaces = fmap (iSpace) $ concat $ fmap (tIndices) sfOps
+        newTerm = baseTerm (tNum term) (tCoeff term) (fmap (makeNewTensor) tensors)　
+
+        makeNewTensor :: QTensor -> QTensor
+        makeNewTensor konoTensor
+          | take (length sfGenName_) (tLabel konoTensor) == sfGenName_ = baseSFRDM (tIndices konoTensor)
+          | otherwise                                                  = konoTensor
