@@ -40,6 +40,7 @@ module BraHKet.Core
   -- Functions for QTensor data
   QTensor(..),
   baseTensor,  -- Generic tensor
+  baseTensorP, -- Generic tensor
   baseOne,     -- One-body int
   baseKD,      -- Kronecker's delta
   baseERI,     -- Two-body int
@@ -139,6 +140,15 @@ instance Show QTensor where
 -- Standard constructor
 baseTensor :: String -> QIndices -> Permut -> Bool -> QTensor
 baseTensor label indices symm iscomm
+  | not lenSymm = error "QTensor: Lengths of given indices and symm mismatched."
+  | otherwise = QTensor label indices symm iscomm
+  where lenSymm =
+          let lenInds = take (length symm) (repeat $ length indices)
+          in lenInds == map length symm
+
+-- Standard constructor that calls makePerms internally
+baseTensorP :: String -> QIndices -> Permut -> Bool -> QTensor
+baseTensorP label indices symm iscomm
   | not lenSymm = error "QTensor: Lengths of given indices and symm mismatched."
   | otherwise = QTensor label indices symm iscomm
   where lenSymm =
@@ -556,7 +566,7 @@ normalOrderA term =
       | iSpace ((tIndices op1) !! 0) == Virtual && iSpace ((tIndices op2) !! 0) == Virtual = (op2, op1)
       | iSpace ((tIndices op1) !! 0) == Generic && iSpace ((tIndices op2) !! 0) == Virtual = (op2, op1)
       | iSpace ((tIndices op1) !! 0) == Virtual && iSpace ((tIndices op2) !! 0) == Generic = (op2, op1)
-      | iSpace ((tIndices op1) !! 0) == Active  || iSpace ((tIndices op2) !! 0) == Active  = error "normalOrderOp: Can't handle index for the active MOs"
+      | iSpace ((tIndices op1) !! 0) == Active  || iSpace ((tIndices op2) !! 0) == Active  = error "normalOrderA: Can't handle index for the active MOs"
       | otherwise = (op1, op2)
                                                                                          
     makeTerm :: Int -> QTensors -> QTerm

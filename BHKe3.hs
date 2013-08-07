@@ -32,11 +32,11 @@ main = do
     ordered = normalOrderE term
     vev     = takeVEV ordered
     survived = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) vev
-    maximums = fmap (maximum . generateAllConfs) survived
+    --maximums = fmap (maximum . generateAllConfs) survived
   print $ "inTerm   : " ++ (show term)
   print $ "outTerm  : " ++ (show $ ordered)
   print $ "length   : " ++ (show $ length ordered)
   print $ "vev      : " ++ (show $ vev)
   print $ "length   : " ++ (show $ length vev)
-  print $ "maximum  : " ++ (show $ maximums)
+  --print $ "maximum  : " ++ (show $ maximums)
   print $ "combined : " ++ (show $ combineTerms survived)
