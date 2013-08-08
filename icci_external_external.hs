@@ -4,8 +4,8 @@ import Data.Maybe
 import BraHKet.Core
 
 ------------------------------------------------------------------------------------------------------------------------
--- Calculates external/external excitation block of the IC-MRCI sigma-equation where the non-
--- relativistic electronic Hamiltonian is given as
+-- It calculates the external/external excitation block of the IC-MRCI sigma-equation where the non-relativistic 
+-- electronic Hamiltonian is given as
 --
 --     H = h^p_q E^q_p + 1/2 V^{pq}_{rs} E^{rs}_{pq}.
 --

@@ -81,7 +81,7 @@ import qualified BraHKet.Utils as Utils
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
 import qualified Data.List as List
-import Control.Applicative
+--import Control.Applicative
 
 -------------------------------------------------------------------------
 -- Acronyms
