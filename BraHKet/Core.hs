@@ -544,7 +544,7 @@ gMap (i:is) num
 normalOrderA :: QTerm -> QTerms
 normalOrderA term =
   if length cres == length des then zipWith (makeTerm) signs kDeltas
-  else error "normalOrderOp: Numbers of creation and annihilation operators should be equal for the current implementation"
+  else error "normalOrderA: Numbers of creation and annihilation operators should be equal for the current implementation"
   where
     tensors   = tTensor term
     operators = [x | x <- tensors, tLabel x == creName_ || tLabel x == desName_]
@@ -669,7 +669,9 @@ normalOrderG term = zipWith (makeTerm) signs kDeltas
 ---------------------------------------------------------------------------------------------
 -- Normal ordering function for spin-free excitaiton operators
 normalOrderE :: QTerm -> QTerms
-normalOrderE term = iterateNormalOrder restEops [initTerm]
+normalOrderE term = if length otherOps /= 0
+                    then error "normalOrderE: Normal ordering among other types of excitation operators is not yet implemented."
+                    else iterateNormalOrder restEops [initTerm]
   where
     tensors   = tTensor term
     operators = [x | x <- tensors, take (length sfGenName_) (tLabel x) == sfGenName_]
@@ -695,7 +697,7 @@ normalOrderE term = iterateNormalOrder restEops [initTerm]
     -- Contract given two generators -- It's working!!
     contractGen :: QTerm -> QTerms
     contractGen thisTerm
-      | (length incommutables) >  2 = error "contractGen: Length of operators given should be lower than 2."
+      | (length incommutables) >  2 = error "contractGen: Length of operators given should be shorter than or qeual to 2."
       | (length incommutables) == 2 = concat . fmap (fmap makeTerm) $ fmap (makeContractions) [0..(min order1 order2)]
       | otherwise                   = [thisTerm]
       where
@@ -711,7 +713,7 @@ normalOrderE term = iterateNormalOrder restEops [initTerm]
         lowerInds1 = reverse $ take (order1) $ reverse (tIndices e1)
         lowerInds2 = reverse $ take (order2) $ reverse (tIndices e2) 
 
-        -- Lower indices of e1 and upper indices of e2 are contracted
+        -- Lower indices of e1 and upper indices of e2 are used to make contraction
         contPairs = [(x, y) | x <- lowerInds1, y <- upperInds2]
         e1PairInds = Map.fromList $ zip lowerInds1 upperInds1  -- -> Lower indices are keys -> Upper indices
         e2PairInds = Map.fromList $ zip upperInds2 lowerInds2  -- -> Upper indices are keys -> Lower indices
