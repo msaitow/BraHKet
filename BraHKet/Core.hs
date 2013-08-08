@@ -71,7 +71,7 @@ module BraHKet.Core
   -- Auxiliary data
   ----------------------------------------
   QSum(..),    
-  QOp(..),     
+  QNature(..),     
   QSpace(..)
   ----------------------------------------
   
@@ -117,7 +117,7 @@ data QSum = Dummy | NonDummy deriving(Show, Eq, Ord)
 -------------------------------------------------------------------------
 -- @@ Data that represents whether the tensor is an operator 
 -------------------------------------------------------------------------
-data QOp = Operator | Classical deriving(Show, Eq, Ord)
+data QNature = Operator | Classical deriving(Show, Eq, Ord)
 
 -------------------------------------------------------------------------
 -- @@ Orbital space
@@ -141,7 +141,7 @@ instance Show QIndex where
 data QTensor = QTensor { tLabel   :: String,   -- Name
                          tIndices :: QIndices, -- Indices
                          tSymm    :: Permut,   -- Permutation
-                         tComm    :: QOp       -- Whether commutable or not
+                         tComm    :: QNature       -- Whether commutable or not
                        } deriving (Eq, Ord)
                         
 showTensor :: QTensor -> String
@@ -155,7 +155,7 @@ instance Show QTensor where
   show = showTensor
 
 -- Standard constructor
-baseTensor :: String -> QIndices -> Permut -> QOp -> QTensor
+baseTensor :: String -> QIndices -> Permut -> QNature -> QTensor
 baseTensor label indices symm iscomm
   | not lenSymm = error "QTensor: Lengths of given indices and symm mismatched."
   | otherwise = QTensor label indices symm iscomm
@@ -164,7 +164,7 @@ baseTensor label indices symm iscomm
           in lenInds == map length symm
 
 -- Standard constructor that calls makePerms internally
-baseTensorP :: String -> QIndices -> Permut -> QOp -> QTensor
+baseTensorP :: String -> QIndices -> Permut -> QNature -> QTensor
 baseTensorP label indices symm iscomm
   | not lenSymm = error "QTensor: Lengths of given indices and symm mismatched."
   | otherwise = QTensor label indices symm iscomm
@@ -423,8 +423,6 @@ generateAllConfs term = concat . fmap (rotateAllIndices) $ concat . fmap (rotate
 
 -- Kill Kronecker's delta (Still buggy??)
 killKDeltas :: QTerm -> Maybe QTerm
---killKDeltas term = Just (QTerm (tNum term) (tCoeff term) exceptkDeltas) 
---killKDeltas term = if oldSpace == newSpace then Just (QTerm (tNum term) (tCoeff term) exceptkDeltas) else Nothing
 killKDeltas term = if foldr (||) False $ fmap isZero kdList then Nothing else Just (QTerm (tNum term) (tCoeff term) exceptkDeltas)
   where
     -- First, construct a Map [(killed Index, killer Index)]
@@ -442,17 +440,17 @@ killKDeltas term = if foldr (||) False $ fmap isZero kdList then Nothing else Ju
 
     mkMap   = Map.fromList $ fmap killSchedule kdList
     killSchedule kDelta
-      |     ((isDummy ind1) == Dummy) &&     ((isDummy ind2) == Dummy) && (iSpace ind1 == Generic) = (ind1, ind2)
-      |     ((isDummy ind1) == Dummy) &&     ((isDummy ind2) == Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)
-      |     ((isDummy ind1) == Dummy) && not ((isDummy ind2) == Dummy) && (iSpace ind1 == Generic) = (ind1, ind2)
-      | not ((isDummy ind1) == Dummy) &&     ((isDummy ind2) == Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)                                                                               
-      |     ((isDummy ind1) == Dummy) && not ((isDummy ind2) == Dummy)                             = (ind1, ind2)
-      | not ((isDummy ind1) == Dummy) &&     ((isDummy ind2) == Dummy)                             = (ind2, ind1)
-      |     ((isDummy ind1) == Dummy) &&     ((isDummy ind2) == Dummy)                             = (ind1, ind2)
-      | not ((isDummy ind1) == Dummy) && not ((isDummy ind2) == Dummy) && (iSpace ind1 == Generic) = (ind1, ind2)
-      | not ((isDummy ind1) == Dummy) && not ((isDummy ind2) == Dummy) && (iSpace ind2 == Generic) = (ind2, ind2)
-      | not ((isDummy ind1) == Dummy) && not ((isDummy ind2) == Dummy)                             = (ind2, ind2)
-      | otherwise = error "Algorithmic error"
+      | (isDummy ind1 ==    Dummy) && (isDummy ind2 ==    Dummy) && (iSpace ind1 == Generic) = (ind1, ind2)
+      | (isDummy ind1 ==    Dummy) && (isDummy ind2 ==    Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)
+      | (isDummy ind1 ==    Dummy) && (isDummy ind2 == NonDummy) && (iSpace ind1 == Generic) = (ind1, ind2)
+      | (isDummy ind1 == NonDummy) && (isDummy ind2 ==    Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)                                                                               
+      | (isDummy ind1 ==    Dummy) && (isDummy ind2 == NonDummy)                             = (ind1, ind2)
+      | (isDummy ind1 == NonDummy) && (isDummy ind2 ==    Dummy)                             = (ind2, ind1)
+      | (isDummy ind1 ==    Dummy) && (isDummy ind2 ==    Dummy)                             = (ind1, ind2)
+      | (isDummy ind1 == NonDummy) && (isDummy ind2 == NonDummy) && (iSpace ind1 == Generic) = (ind1, ind2)
+      | (isDummy ind1 == NonDummy) && (isDummy ind2 == NonDummy) && (iSpace ind2 == Generic) = (ind2, ind2)
+      | (isDummy ind1 == NonDummy) && (isDummy ind2 == NonDummy)                             = (ind2, ind2)
+      | otherwise = error "killKDeltas: Algorithmic error"
       where
         ind1 = (tIndices kDelta) !! 0
         ind2 = (tIndices kDelta) !! 1

@@ -3,13 +3,20 @@ import Data.List
 import Data.Maybe
 import BraHKet.Core
 
----------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------
 -- Calculates external/external excitation block of the IC-MRCI sigma-equation where the non-
 -- relativistic electronic Hamiltonian is given as
 --
 --     H = h^p_q E^q_p + 1/2 V^{pq}_{rs} E^{rs}_{pq}.
 --
----------------------------------------------------------------------------------------------
+-- Also E represents the spin-free excitation operator that serves as the generator of the
+-- unitary group
+--
+--     E^p_q       = \sum_{\sigma=\alpha,\beta} a^{\dagger}_{p\sigma} a_{q\sigma}
+--
+--     E^{pq}_{rs} = \sum_{\sigma,\tau=\alpha,\beta} a^{\dagger}_{p\sigma} a^{\dagger}_{q\tau} a_{s\tau} a_{r\sigma}. 
+--
+------------------------------------------------------------------------------------------------------------------------
 
 main = do
   let
