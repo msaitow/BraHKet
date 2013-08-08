@@ -31,12 +31,9 @@ module BraHKet.Core
   h1Name_,    -- One-body int
   h2Name_,    -- Two-body int
 
-  -- Functions for QSpace data
-  QSpace(..),
-
   -- Functions for QIndex data
   QIndex(..),
-
+  
   -- Functions for QTensor data
   QTensor(..),
   baseTensor,  -- Generic tensor
@@ -52,7 +49,7 @@ module BraHKet.Core
   tsortIndices,
   tallPermInds,
   tgetConfs,
-
+  
   -- Functions for QTerm data
   QTerm(..),
   baseTerm,      -- Generic term
@@ -68,7 +65,16 @@ module BraHKet.Core
   normalOrderA, -- NO for Cre/Des operators
   normalOrderG, -- NO for spin-dependent generator
   normalOrderE, -- NO for spin-free generator
-  takeVEV
+  takeVEV,       -- Take vacuum expectation value
+
+  ----------------------------------------
+  -- Auxiliary data
+  ----------------------------------------
+  QSum(..),    
+  QOp(..),     
+  QSpace(..)
+  ----------------------------------------
+  
 ) where
 
 import qualified BraHKet.Utils as Utils 
@@ -86,10 +92,6 @@ type QIndices = [QIndex]
 type QTensors = [QTensor]
 type QTerms   = [QTerm]
 
--- ///////////////////////////////////////////////////////////////////////
--- // Fundamental classes to construct the fermionic many-body formulas
--- ///////////////////////////////////////////////////////////////////////
-
 -------------------------------------------------------------------------
 -- @@ Tensor names
 -------------------------------------------------------------------------
@@ -102,6 +104,21 @@ kDName_    = "@kD"  :: String -- Kronecker's delta
 h1Name_    = "@h1"  :: String -- One-body int
 h2Name_    = "@V2"  :: String -- Two-body int
 
+
+-- ///////////////////////////////////////////////////////////////////////
+-- // Fundamental classes to construct the fermionic many-body formulas
+-- ///////////////////////////////////////////////////////////////////////
+
+-------------------------------------------------------------------------
+-- @@ Data that represents summation over the index
+-------------------------------------------------------------------------
+data QSum = Dummy | NonDummy deriving(Show, Eq, Ord)
+
+-------------------------------------------------------------------------
+-- @@ Data that represents whether the tensor is an operator 
+-------------------------------------------------------------------------
+data QOp = Operator | Classical deriving(Show, Eq, Ord)
+
 -------------------------------------------------------------------------
 -- @@ Orbital space
 -------------------------------------------------------------------------
@@ -112,11 +129,11 @@ data QSpace = Core | Active | Virtual | Generic deriving(Show, Eq, Ord)
 -------------------------------------------------------------------------
 data QIndex = QIndex { iLabel   :: String,
                        iSpace   :: QSpace,
-                       isDummy  :: Bool
+                       isDummy  :: QSum
                      } deriving (Eq, Ord)
 
 instance Show QIndex where
-  show ind = "@(" ++ iLabel ind ++ ", " ++ show (iSpace ind) ++ ", " ++ if isDummy ind == True then "Anonymous)" else "Universal)" 
+  show ind = "@(" ++ iLabel ind ++ ", " ++ show (iSpace ind) ++ ", " ++ if isDummy ind == Dummy then "Anonymous)" else "Universal)" 
 
 -------------------------------------------------------------------------
 -- @@ Tensor class
@@ -124,7 +141,7 @@ instance Show QIndex where
 data QTensor = QTensor { tLabel   :: String,   -- Name
                          tIndices :: QIndices, -- Indices
                          tSymm    :: Permut,   -- Permutation
-                         tComm    :: Bool      -- Whether commutable or not
+                         tComm    :: QOp       -- Whether commutable or not
                        } deriving (Eq, Ord)
                         
 showTensor :: QTensor -> String
@@ -138,7 +155,7 @@ instance Show QTensor where
   show = showTensor
 
 -- Standard constructor
-baseTensor :: String -> QIndices -> Permut -> Bool -> QTensor
+baseTensor :: String -> QIndices -> Permut -> QOp -> QTensor
 baseTensor label indices symm iscomm
   | not lenSymm = error "QTensor: Lengths of given indices and symm mismatched."
   | otherwise = QTensor label indices symm iscomm
@@ -147,7 +164,7 @@ baseTensor label indices symm iscomm
           in lenInds == map length symm
 
 -- Standard constructor that calls makePerms internally
-baseTensorP :: String -> QIndices -> Permut -> Bool -> QTensor
+baseTensorP :: String -> QIndices -> Permut -> QOp -> QTensor
 baseTensorP label indices symm iscomm
   | not lenSymm = error "QTensor: Lengths of given indices and symm mismatched."
   | otherwise = QTensor label indices symm iscomm
@@ -162,7 +179,7 @@ baseTensorP label indices symm iscomm
 baseOne :: QIndices -> QTensor
 baseOne inds
   | length inds /= 2 = error "QTensor: Length of indices for kinetic operator should be 2."
-  | otherwise = QTensor h1Name_ inds eriPerms True
+  | otherwise = QTensor h1Name_ inds eriPerms Classical
   where eriPerms =
           let hSource = [[0,1],[1,0]]
           in Utils.makePerms hSource
@@ -171,14 +188,14 @@ baseOne inds
 baseKD :: QIndices -> QTensor
 baseKD inds
   | length inds /= 2 = error "QTensor: Length of indices for Kronecker's delta shoud be 2."
-  | otherwise = QTensor kDName_ inds kDPerm True
+  | otherwise = QTensor kDName_ inds kDPerm Classical
   where kDPerm = [[0,1],[1,0]]
 
 -- Constructor for the two-body integral tensor
 baseERI :: QIndices -> QTensor
 baseERI inds
   | length inds /= 4 = error "QTensor: Length of indices for ERI should be 4."
-  | otherwise = QTensor h2Name_ inds eriPerms True
+  | otherwise = QTensor h2Name_ inds eriPerms Classical
   where eriPerms =
           let eriSource = [[0,1,2,3],[2,1,0,3],[0,3,2,1],[1,0,3,2]]
           in Utils.makePerms eriSource
@@ -187,7 +204,7 @@ baseERI inds
 baseSFGen :: QIndices -> QTensor
 baseSFGen inds
   | odd $ length inds = error "QTensor: Number of indices given to the spin-free generator should be even number."
-  | otherwise = QTensor name inds genPerm False
+  | otherwise = QTensor name inds genPerm Operator
   where
     order = floor $ (fromIntegral $ length inds) / (fromIntegral 2)
     name  = sfGenName_ ++ (show order)
@@ -197,7 +214,7 @@ baseSFGen inds
 baseSDGen :: QIndices -> QTensor
 baseSDGen inds
   | odd $ length inds = error "QTensor: Number of indices given to the spin-dependent generator should be even number."
-  | otherwise = QTensor name inds genPerm False
+  | otherwise = QTensor name inds genPerm Operator
   where
     order = floor $ (fromIntegral $ length inds) / (fromIntegral 2)
     name  = sdGenName_ ++ (show order)
@@ -207,7 +224,7 @@ baseSDGen inds
 baseSFRDM :: QIndices -> QTensor
 baseSFRDM inds
   | odd $ length inds = error "QTensor: Number of indices given to the spin-free density matrix should be even number."
-  | otherwise = QTensor name inds genPerm True
+  | otherwise = QTensor name inds genPerm Classical
   where
     order = floor $ (fromIntegral $ length inds) / (fromIntegral 2)
     name  = sfRDMName_ ++ (show order)
@@ -215,11 +232,11 @@ baseSFRDM inds
 
 -- Constructor for the creation operator
 baseCre :: QIndex -> QTensor
-baseCre ind = QTensor creName_ [ind] [[0]] False
+baseCre ind = QTensor creName_ [ind] [[0]] Operator
 
 -- Constructor for the destruction operator
 baseDes :: QIndex -> QTensor
-baseDes ind = QTensor desName_ [ind] [[0]] False
+baseDes ind = QTensor desName_ [ind] [[0]] Operator
 
 -- -- Returns normal-ordered QTensor
 -- tsortIndices :: QTensor -> QTensor
@@ -268,8 +285,8 @@ instance Show QTerm where
 baseTerm :: Double -> Coeffs -> QTensors -> QTerm
 baseTerm num coeff tensors = QTerm num coeff (commutatives ++ incommutatives)
   where
-    commutatives   = filter (tComm) tensors
-    incommutatives = filter (\x -> not $ tComm x) tensors
+    commutatives   = filter (\x -> (tComm x) == Classical) tensors
+    incommutatives = filter (\x -> (tComm x) == Operator ) tensors
 
 -- Returns set of all the indices of the term
 getSummedBody :: QTerm -> QIndices
@@ -425,16 +442,16 @@ killKDeltas term = if foldr (||) False $ fmap isZero kdList then Nothing else Ju
 
     mkMap   = Map.fromList $ fmap killSchedule kdList
     killSchedule kDelta
-      |     (isDummy ind1) &&     (isDummy ind2) && (iSpace ind1 == Generic) = (ind1, ind2)
-      |     (isDummy ind1) &&     (isDummy ind2) && (iSpace ind2 == Generic) = (ind2, ind1)
-      |     (isDummy ind1) && not (isDummy ind2) && (iSpace ind1 == Generic) = (ind1, ind2)
-      | not (isDummy ind1) &&     (isDummy ind2) && (iSpace ind2 == Generic) = (ind2, ind1)                                                                               
-      |     (isDummy ind1) && not (isDummy ind2)                             = (ind1, ind2)
-      | not (isDummy ind1) &&     (isDummy ind2)                             = (ind2, ind1)
-      |     (isDummy ind1) &&     (isDummy ind2)                             = (ind1, ind2)
-      | not (isDummy ind1) && not (isDummy ind2) && (iSpace ind1 == Generic) = (ind1, ind2)
-      | not (isDummy ind1) && not (isDummy ind2) && (iSpace ind2 == Generic) = (ind2, ind2)
-      | not (isDummy ind1) && not (isDummy ind2)                             = (ind2, ind2)
+      |     ((isDummy ind1) == Dummy) &&     ((isDummy ind2) == Dummy) && (iSpace ind1 == Generic) = (ind1, ind2)
+      |     ((isDummy ind1) == Dummy) &&     ((isDummy ind2) == Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)
+      |     ((isDummy ind1) == Dummy) && not ((isDummy ind2) == Dummy) && (iSpace ind1 == Generic) = (ind1, ind2)
+      | not ((isDummy ind1) == Dummy) &&     ((isDummy ind2) == Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)                                                                               
+      |     ((isDummy ind1) == Dummy) && not ((isDummy ind2) == Dummy)                             = (ind1, ind2)
+      | not ((isDummy ind1) == Dummy) &&     ((isDummy ind2) == Dummy)                             = (ind2, ind1)
+      |     ((isDummy ind1) == Dummy) &&     ((isDummy ind2) == Dummy)                             = (ind1, ind2)
+      | not ((isDummy ind1) == Dummy) && not ((isDummy ind2) == Dummy) && (iSpace ind1 == Generic) = (ind1, ind2)
+      | not ((isDummy ind1) == Dummy) && not ((isDummy ind2) == Dummy) && (iSpace ind2 == Generic) = (ind2, ind2)
+      | not ((isDummy ind1) == Dummy) && not ((isDummy ind2) == Dummy)                             = (ind2, ind2)
       | otherwise = error "Algorithmic error"
       where
         ind1 = (tIndices kDelta) !! 0
@@ -514,29 +531,29 @@ gAllMap inds = zipWith (zipWith (\x y -> (x,y))) allFst allRenames
 cMap :: QIndices -> Int -> [(QIndex, String)]
 cMap [] _ = []
 cMap (i:is) num
-  | (iSpace i) == Core && (isDummy i) = [(i, "c" ++ show num)] ++ (cMap is (num+1))
-  | otherwise                         = cMap is num
+  | (iSpace i) == Core && (isDummy i) == Dummy = [(i, "c" ++ show num)] ++ (cMap is (num+1))
+  | otherwise                                  = cMap is num
 
 -- Function to extract dummy active indices
 aMap :: QIndices -> Int -> [(QIndex, String)]
 aMap [] _ = []
 aMap (i:is) num
-  | (iSpace i) == Active && (isDummy i) = [(i, "a" ++ show num)] ++ (aMap is (num+1))
-  | otherwise                           = aMap is num
+  | (iSpace i) == Active && (isDummy i) == Dummy = [(i, "a" ++ show num)] ++ (aMap is (num+1))
+  | otherwise                                    = aMap is num
 
 -- Function to extract dummy virtual indices
 vMap :: QIndices -> Int -> [(QIndex, String)]
 vMap [] _ = []
 vMap (i:is) num
-  | (iSpace i) == Virtual && (isDummy i) = [(i, "v" ++ show num)] ++ (vMap is (num+1))
-  | otherwise                            = vMap is num
+  | (iSpace i) == Virtual && (isDummy i) == Dummy = [(i, "v" ++ show num)] ++ (vMap is (num+1))
+  | otherwise                                     = vMap is num
 
 -- Functon to extract dummy generic indices
 gMap :: QIndices -> Int -> [(QIndex, String)]
 gMap [] _ = []
 gMap (i:is) num
-  | (iSpace i) == Generic && (isDummy i) = [(i, "g" ++ show num)] ++ (gMap is (num+1))
-  | otherwise                            = gMap is num
+  | (iSpace i) == Generic && (isDummy i) == Dummy = [(i, "g" ++ show num)] ++ (gMap is (num+1))
+  | otherwise                                     = gMap is num
 
 ---------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------
