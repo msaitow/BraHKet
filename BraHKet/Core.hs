@@ -143,7 +143,7 @@ data QTensor = QTensor { tLabel   :: String,   -- Name
                          tSymm    :: Permut,   -- Permutation
                          tComm    :: QNature       -- Whether commutable or not
                        } deriving (Eq, Ord)
-                        
+
 showTensor :: QTensor -> String
 showTensor ten =
   let all1 = map (\x -> x ++ ",") $ foldr (:) [] $ fmap iLabel $ tIndices ten
@@ -443,7 +443,7 @@ killKDeltas term = if foldr (||) False $ fmap isZero kdList then Nothing else Ju
       | (isDummy ind1 ==    Dummy) && (isDummy ind2 ==    Dummy) && (iSpace ind1 == Generic) = (ind1, ind2)
       | (isDummy ind1 ==    Dummy) && (isDummy ind2 ==    Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)
       | (isDummy ind1 ==    Dummy) && (isDummy ind2 == NonDummy) && (iSpace ind1 == Generic) = (ind1, ind2)
-      | (isDummy ind1 == NonDummy) && (isDummy ind2 ==    Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)                                                                               
+      | (isDummy ind1 == NonDummy) && (isDummy ind2 ==    Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)                         
       | (isDummy ind1 ==    Dummy) && (isDummy ind2 == NonDummy)                             = (ind1, ind2)
       | (isDummy ind1 == NonDummy) && (isDummy ind2 ==    Dummy)                             = (ind2, ind1)
       | (isDummy ind1 ==    Dummy) && (isDummy ind2 ==    Dummy)                             = (ind1, ind2)

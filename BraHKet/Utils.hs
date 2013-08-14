@@ -89,23 +89,26 @@ uniPerm (x:xs) array
 uniPermR :: (Ord a) => [a] -> [Int] -> [a]
 uniPermR array xs = uniPerm xs array
 
--- Small function which is necessary for makePerms
-genPerm :: [[Int]] -> [[Int]] -> [[Int]]
-genPerm (p:ps) inArrays
-  | length ps == 0 = pArrays
-  | otherwise      = pArrays ++ genPerm ps inArrays
-  where pArrays = fmap (uniPerm p) inArrays
-
--- Body of the makePerms
-genAllPerms :: [[Int]] -> [[Int]] -> [[Int]]
-genAllPerms irrSource inSource
-  | length outSource == length inSource = outSource
-  | otherwise = genAllPerms irrSource outSource
-  where outSource = nub $ genPerm irrSource inSource
-
 -- Make all permutations from the irreducible groups of permutations
 makePerms :: [[Int]] -> [[Int]]
 makePerms a = genAllPerms a a
+  where
+    
+    -- Body of the makePerms
+    genAllPerms :: [[Int]] -> [[Int]] -> [[Int]]
+    genAllPerms irrSource inSource
+      | length outSource == length inSource = outSource
+      | otherwise = genAllPerms irrSource outSource
+      where
+        outSource = nub $ genPerm irrSource inSource
+
+        -- Small function which is necessary for makePerms
+        genPerm :: [[Int]] -> [[Int]] -> [[Int]]
+        genPerm (p:ps) inArrays
+          | length ps == 0 = pArrays
+          | otherwise      = pArrays ++ genPerm ps inArrays
+          where pArrays = fmap (uniPerm p) inArrays
+        
 
 -- Make all permutations for the spin-free unitary group generator
 makePermSFGen :: Int -> [[Int]]

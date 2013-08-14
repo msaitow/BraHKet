@@ -14,6 +14,8 @@ import BraHKet.Core
 --
 --     E^p_q       = \sum_{\sigma=\alpha,\beta} a^{\dagger}_{p\sigma} a_{q\sigma}
 --
+-- and
+--
 --     E^{pq}_{rs} = \sum_{\sigma,\tau=\alpha,\beta} a^{\dagger}_{p\sigma} a^{\dagger}_{q\tau} a_{s\tau} a_{r\sigma}. 
 --
 ------------------------------------------------------------------------------------------------------------------------
@@ -37,8 +39,8 @@ main = do
     s = QIndex "s" Generic Dummy           
 
     -- Definitions of tensors
-    t   = baseTensor "@T2" [c,d,k,l] [[0,1,2,3],[1,0,3,2]] Classical
-    h   = baseOne [p, q]         -- h^{p}_{q}
+    t   = baseTensor "@T2" [c,d,k,l] [[0,1,2,3],[1,0,3,2]] Classical -- t^{cd}_{kl}
+    h   = baseOne   [p, q]       -- h^{p}_{q}
     v   = baseERI   [p, q, r, s] -- v^{pq}_{rs}
     eL  = baseSFGen [i, j, a, b] -- E^{ij}_{ab}
     eH1 = baseSFGen [p, q]       -- E^{p}_{r}
@@ -64,6 +66,7 @@ main = do
     ordered2  = normalOrderE term2
     vev2      = takeVEV ordered2
     survived2 = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) vev2
+    
   print $ "inTerm_h1   : " ++ (show term1)
   print $ "inTerm_v2   : " ++ (show term2)
   print $ "outTerm_h1  : " ++ (show $ ordered1)
