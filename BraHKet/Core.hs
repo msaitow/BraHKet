@@ -21,6 +21,13 @@
 
 module BraHKet.Core
 (
+  -- Acroyms
+  Permut,
+  Coeffs,
+  QIndices,
+  QTensors,
+  QTerms,
+  
   -- Predefined names for various tensors
   creName_,   -- Creation operators
   desName_,   -- Destruction operators 
@@ -62,10 +69,12 @@ module BraHKet.Core
   generateAllConfs,
   killKDeltas,
   combineTerms,
-  normalOrderA, -- NO for Cre/Des operators
-  normalOrderG, -- NO for spin-dependent generator
-  normalOrderE, -- NO for spin-free generator
-  takeVEV,       -- Take vacuum expectation value
+  normalOrderA,     -- NO for Cre/Des operators
+  normalOrderG,     -- NO for spin-dependent generator
+  normalOrderE,     -- NO for spin-free generator
+  normalOrderCommE, -- NO for the multiple commutatos of the spin-free generator
+  contractGen,      -- Contract two spin-free generators
+  takeVEV,          -- Take vacuum expectation value
 
   ----------------------------------------
   -- Auxiliary data
@@ -465,7 +474,7 @@ killKDeltas term = if foldr (||) False $ fmap isZero kdList then Nothing else Ju
 
 -- Function to return the combined terms. This can be implemented by using State monad more elegantly?
 combineTerms :: QTerms -> QTerms
-combineTerms terms = fmap (changeFactors) origTerms
+combineTerms terms = filter (\x -> (tNum x) /= 0.0) $ fmap (changeFactors) origTerms
   where
     maxTerms = fmap (maximum . generateAllConfs) terms
     origTerms = List.nub $ fmap (makeUniTerm) maxTerms
@@ -709,79 +718,143 @@ normalOrderE term = if length otherOps /= 0
     makeTerm' :: QTensors -> QTerm
     makeTerm' tenten = baseTerm (tNum term) (tCoeff term) (tenten)
 
-    -- Contract given two generators -- It's working!!
-    contractGen :: QTerm -> QTerms
-    contractGen thisTerm
-      | (length incommutables) >  2 = error "contractGen: Length of operators given should be shorter than or qeual to 2."
-      | (length incommutables) == 2 = concat . fmap (fmap makeTerm) $ fmap (makeContractions) [0..(min order1 order2)]
-      | otherwise                   = [thisTerm]
+
+---------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------
+-- Normal ordering function for the multiple commutators of the spin-free excitaiton operators, [E1, [E2, [E3, .. En], .. ], ]
+normalOrderCommE :: QTerm -> QTerms
+normalOrderCommE term = if length otherOps /= 0
+                    then error "normalOrderCommE: Normal ordering among other types of excitation operators is not yet implemented."
+                    else iterateNormalOrder restEops [initTerm]
+  where
+    tensors   = tTensor term
+    operators = [x | x <- tensors, take (length sfGenName_) (tLabel x) == sfGenName_]
+    others    = [x | x <- tensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
+    otherOps  = [x | x <- others, (take (length sdGenName_) (tLabel x) == sdGenName_) || tLabel x == creName_ || tLabel x == desName_]
+    initTerm  = makeTerm' (tNum term) $ others ++ [operators !! (length operators-1)]
+    restEops  = take (length operators-1) operators
+    numSteps  = (length operators) - 1
+
+    iterateNormalOrder :: QTensors -> QTerms -> QTerms
+    iterateNormalOrder restEs currentTerms
+      | length restEs == 0 = currentTerms
+      | otherwise          = iterateNormalOrder (init restEs) orderedTerms
       where
-        thisTensors = tTensor thisTerm
-        commutables   = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
-        incommutables = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) == sfGenName_]
-        e1 = incommutables !! (length incommutables-2)
-        e2 = incommutables !! (length incommutables-1)
-        order1     = floor $ (fromIntegral $ length $ tIndices e1) / (fromIntegral 2)
-        order2     = floor $ (fromIntegral $ length $ tIndices e2) / (fromIntegral 2)
-        upperInds1 = take (order1) (tIndices e1)
-        upperInds2 = take (order2) (tIndices e2)
-        lowerInds1 = reverse $ take (order1) $ reverse (tIndices e1)
-        lowerInds2 = reverse $ take (order2) $ reverse (tIndices e2) 
+        newTensors   = zipWith (:) ( replicate (length currentTerms) (last restEs) ) $ fmap (tTensor) currentTerms
+        factors      = fmap (tNum) currentTerms
+        signs        = fmap (getSign) factors
+        newTerms     = zipWith (makeTerm') factors newTensors -- :: QTerms
+        orderedTerms = concat $ fmap (contractComm) newTerms
+        
+    -- Returns terms with correct prefactors and tensors -- Buggy [1]
+    makeTerm' :: Double -> QTensors -> QTerm
+    makeTerm' myFactor tenten = baseTerm myFactor (tCoeff term) (tenten)
 
-        -- Lower indices of e1 and upper indices of e2 are used to make contraction
-        contPairs = [(x, y) | x <- lowerInds1, y <- upperInds2]
-        e1PairInds = Map.fromList $ zip lowerInds1 upperInds1  -- -> Lower indices are keys -> Upper indices
-        e2PairInds = Map.fromList $ zip upperInds2 lowerInds2  -- -> Upper indices are keys -> Lower indices
+    -- Returns signs
+    getSign :: Double -> Double
+    getSign num
+      | num >= 1.0 =  1.0
+      | num == 0.0 =  0.0
+      | otherwise  = -1.0
+    
+    -- Returns normal ordered results of [E1, E2]
+    contractComm :: QTerm -> QTerms
+    contractComm thisTerm
+      | length es > 2  = error "contractComm: Length of operators given should be  shorter than or equal to 2."
+      | length es == 2 = withoutMaximum_e1e2 ++ withoutMaximum_e2e1
+      | otherwise      = [thisTerm]
+      where
+        thisTensors = tTensor thisTerm 
+        commutables = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
+        es = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) == sfGenName_]
+        negativeTerm = baseTerm (negate $ tNum thisTerm) (tCoeff thisTerm) (commutables ++ [es !! 1, es !! 0])
+        withoutMaximum_e1e2 = filter (\x -> not $ isMaxE x) $ contractGen thisTerm
+        withoutMaximum_e2e1 = filter (\x -> not $ isMaxE x) $ contractGen negativeTerm
 
-        e1Pairs = zip upperInds1 lowerInds1  
-        e2Pairs = zip upperInds2 lowerInds2  
-
-        e1Maps = Map.fromList $ zip upperInds1 e1Pairs  -- -> Upper indices are keys -> (Upper, Lower)
-        e2Maps = Map.fromList $ zip lowerInds2 e2Pairs  -- -> Lower indices are keys -> (Upper, Lower)
-
-        -- Returns terms with correct prefactors and tensors
-        makeTerm :: QTensors -> QTerm
-        makeTerm tenten = baseTerm (tNum term) (tCoeff term) (commutables ++ tenten)
-
-        -- Returns contracted operators [input; contraction order]
-        makeContractions :: Int -> [QTensors]
-        makeContractions myOrder = filter (isAppropriate) $ zipWith (:) (fmap (baseSFGen) $ fmap (Utils.makeFlat2) totalInds) kDeltas
+        -- Returns true if the terms has thr generator of maximum rank that can be formed from E1 and E2
+        isMaxE :: QTerm -> Bool
+        isMaxE kore
+          | length myEs /= 1 = False
+          | otherwise        = length (tIndices $ myEs !! 0) == length (tIndices $ es !! 0) + length (tIndices $ es !! 1)
           where
-            myContractions = Utils.binCombi myOrder contPairs
-            kDeltas      = fmap (fmap makeKD) myContractions       -- Kronecker's deltas [[kDs]]
-            newPairs     = fmap (fmap makeNewPairs) myContractions -- Newly formed pairs [[(uind_e1, lind_e2)]]
-            -----------------------------
-            deadE1Pairs  = fmap (fmap Maybe.fromJust) $ fmap (filter (\x -> x /= Nothing)) $ fmap (fmap findDeadE1) $ fmap (fmap fst) newPairs
-              where
-                findDeadE1 :: QIndex -> Maybe (QIndex, QIndex)
-                findDeadE1 konoIndex = if Map.lookup konoIndex e1Maps /= Nothing then Map.lookup konoIndex e1Maps else Nothing
-            
-            deadE2Pairs  = fmap (fmap Maybe.fromJust) $ fmap (filter (\x -> x /= Nothing)) $ fmap (fmap findDeadE2) $ fmap (fmap snd) newPairs
-              where
-                findDeadE2 :: QIndex -> Maybe (QIndex, QIndex)
-                findDeadE2 konoIndex = if Map.lookup konoIndex e2Maps /= Nothing then Map.lookup konoIndex e2Maps else Nothing
-            -----------------------------
-            aliveE1Pairs = fmap (isAliveE1) deadE1Pairs
-            aliveE2Pairs = fmap (isAliveE2) deadE2Pairs            
-            totalInds    = zipWith (++) aliveE1Pairs $ zipWith (++) aliveE2Pairs newPairs
+            myTensors = tTensor kore
+            myEs = [x | x <- myTensors, take (length sfGenName_) (tLabel x) == sfGenName_]
 
-            makeKD :: (QIndex, QIndex) -> QTensor
-            makeKD (lind1, uind2) = baseKD [lind1, uind2]
+---------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------
+-- Contract given two generators
+contractGen :: QTerm -> QTerms
+contractGen thisTerm
+  | (length incommutables) >  2 = error "contractGen: Length of operators given should be shorter than or qeual to 2."
+  | (length incommutables) == 2 = concat . fmap (fmap makeTerm) $ fmap (makeContractions) [0..(min order1 order2)]
+  | otherwise                   = [thisTerm]
+  where
+    thisTensors = tTensor thisTerm
+    commutables   = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
+    incommutables = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) == sfGenName_]
+    e1 = incommutables !! (length incommutables-2)
+    e2 = incommutables !! (length incommutables-1)
+    order1     = floor $ (fromIntegral $ length $ tIndices e1) / (fromIntegral 2)
+    order2     = floor $ (fromIntegral $ length $ tIndices e2) / (fromIntegral 2)
+    upperInds1 = take (order1) (tIndices e1)
+    upperInds2 = take (order2) (tIndices e2)
+    lowerInds1 = reverse $ take (order1) $ reverse (tIndices e1)
+    lowerInds2 = reverse $ take (order2) $ reverse (tIndices e2) 
 
-            makeNewPairs :: (QIndex, QIndex) -> (QIndex, QIndex)
-            makeNewPairs (lind1, uind2) = (Maybe.fromJust $ Map.lookup lind1 e1PairInds, Maybe.fromJust $ Map.lookup uind2 e2PairInds) -- -> Return (Upper, Lower) pairs
+    -- Lower indices of e1 and upper indices of e2 are used to make contraction
+    contPairs = [(x, y) | x <- lowerInds1, y <- upperInds2]
+    e1PairInds = Map.fromList $ zip lowerInds1 upperInds1  -- -> Lower indices are keys -> Upper indices
+    e2PairInds = Map.fromList $ zip upperInds2 lowerInds2  -- -> Upper indices are keys -> Lower indices
 
-            isAliveE1 :: [(QIndex, QIndex)] -> [(QIndex, QIndex)]
-            isAliveE1 koreraE1 = [x| x <- e1Pairs, not $ x `elem` koreraE1]
+    e1Pairs = zip upperInds1 lowerInds1  
+    e2Pairs = zip upperInds2 lowerInds2  
 
-            isAliveE2 :: [(QIndex, QIndex)] -> [(QIndex, QIndex)]
-            isAliveE2 koreraE2 = [x| x <- e2Pairs, not $ x `elem` koreraE2]
+    e1Maps = Map.fromList $ zip upperInds1 e1Pairs  -- -> Upper indices are keys -> (Upper, Lower)
+    e2Maps = Map.fromList $ zip lowerInds2 e2Pairs  -- -> Lower indices are keys -> (Upper, Lower)
 
-            isAppropriate :: QTensors -> Bool
-            isAppropriate tenten = List.sort (myIndices) == List.sort (Utils.makeFlat $ e1Pairs ++ e2Pairs)
-              where
-                myIndices = concat $ fmap (tIndices) tenten
-            
+    -- Returns terms with correct prefactors and tensors
+    makeTerm :: QTensors -> QTerm
+    makeTerm tenten = baseTerm (tNum thisTerm) (tCoeff thisTerm) (commutables ++ tenten)
+
+    -- Returns contracted operators [input; contraction order]
+    makeContractions :: Int -> [QTensors]
+    makeContractions myOrder = filter (isAppropriate) $ zipWith (:) (fmap (baseSFGen) $ fmap (Utils.makeFlat2) totalInds) kDeltas
+      where
+        myContractions = Utils.binCombi myOrder contPairs
+        kDeltas      = fmap (fmap makeKD) myContractions       -- Kronecker's deltas [[kDs]]
+        newPairs     = fmap (fmap makeNewPairs) myContractions -- Newly formed pairs [[(uind_e1, lind_e2)]]
+        -----------------------------
+        deadE1Pairs  = fmap (fmap Maybe.fromJust) $ fmap (filter (\x -> x /= Nothing)) $ fmap (fmap findDeadE1) $ fmap (fmap fst) newPairs
+          where
+            findDeadE1 :: QIndex -> Maybe (QIndex, QIndex)
+            findDeadE1 konoIndex = if Map.lookup konoIndex e1Maps /= Nothing then Map.lookup konoIndex e1Maps else Nothing
+        
+        deadE2Pairs  = fmap (fmap Maybe.fromJust) $ fmap (filter (\x -> x /= Nothing)) $ fmap (fmap findDeadE2) $ fmap (fmap snd) newPairs
+          where
+            findDeadE2 :: QIndex -> Maybe (QIndex, QIndex)
+            findDeadE2 konoIndex = if Map.lookup konoIndex e2Maps /= Nothing then Map.lookup konoIndex e2Maps else Nothing
+        -----------------------------
+        aliveE1Pairs = fmap (isAliveE1) deadE1Pairs
+        aliveE2Pairs = fmap (isAliveE2) deadE2Pairs            
+        totalInds    = zipWith (++) aliveE1Pairs $ zipWith (++) aliveE2Pairs newPairs
+
+        makeKD :: (QIndex, QIndex) -> QTensor
+        makeKD (lind1, uind2) = baseKD [lind1, uind2]
+
+        makeNewPairs :: (QIndex, QIndex) -> (QIndex, QIndex)
+        makeNewPairs (lind1, uind2) = (Maybe.fromJust $ Map.lookup lind1 e1PairInds, Maybe.fromJust $ Map.lookup uind2 e2PairInds) -- -> Return (Upper, Lower) pairs
+
+        isAliveE1 :: [(QIndex, QIndex)] -> [(QIndex, QIndex)]
+        isAliveE1 koreraE1 = [x| x <- e1Pairs, not $ x `elem` koreraE1]
+
+        isAliveE2 :: [(QIndex, QIndex)] -> [(QIndex, QIndex)]
+        isAliveE2 koreraE2 = [x| x <- e2Pairs, not $ x `elem` koreraE2]
+
+        isAppropriate :: QTensors -> Bool
+        isAppropriate tenten = List.sort (myIndices) == List.sort (Utils.makeFlat $ e1Pairs ++ e2Pairs)
+          where
+            myIndices = concat $ fmap (tIndices) tenten
+        
 
 ---------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------
