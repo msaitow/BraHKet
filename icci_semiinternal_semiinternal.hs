@@ -53,7 +53,12 @@ main = do
          --
     -----------------------------------------------------------------------------          
     term1     = baseTerm 1.0 [] [eL, h, eH1, t, eR]
+
+    ----------------------------------------------------------------------------------------
+    -- Normal ordering of the quantity:
+    --    h^{p}_{q} T^{lb}_{mn} [E^{ij}_{ka}, [E^{p}_{q}, E^{lb}_{mn}]]
     ordered1  = normalOrderCommE term1
+    ----------------------------------------------------------------------------------------
     vev1      = takeVEV ordered1
     survived1 = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) vev1
 
@@ -63,7 +68,12 @@ main = do
          --           2
     -----------------------------------------------------------------------------                
     term2     = baseTerm 0.5 [] [eL, v, eH2, t, eR]
+
+    ----------------------------------------------------------------------------------------
+    -- Normal ordering of the quantity:
+    --   0.5 V^{pq}_{rs} T^{lb}_{mn} [E^{ij}_{ka}, [E^{pq}_{rs}, E^{lb}_{mn}]]
     ordered2  = normalOrderCommE term2
+    ----------------------------------------------------------------------------------------
     vev2      = takeVEV ordered2
     survived2 = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) vev2
     
@@ -75,4 +85,4 @@ main = do
   print $ "vev_v2      : " ++ (show $ vev2)  
   print $ "combined_h1 : " ++ (show $ combineTerms survived1)
   print $ "combined_v2 : " ++ (show $ combineTerms survived2)
- -- print $ "total lenght >> " ++ (show $ length (combineTerms survived1) + length (combineTerms survived2))
+
