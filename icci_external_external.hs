@@ -4,8 +4,8 @@ import Data.Maybe
 import BraHKet.Core
 
 ------------------------------------------------------------------------------------------------------------------------
--- It calculates the external/external excitation block of the IC-MRCI sigma-equation where the non-relativistic 
--- electronic Hamiltonian is given as
+-- It derives the explicit formulas for the external/external excitation block of the IC-MRCI sigma-equation
+-- where the non-relativistic electronic Hamiltonian is given as
 --
 --     H = h^p_q E^q_p + 1/2 V^{pq}_{rs} E^{rs}_{pq}.
 --
@@ -22,6 +22,7 @@ import BraHKet.Core
 --
 -- shell> ghc ./THIS_FILE.hs
 --
+-- For detail, see Journal of Chemical Physics 139, 044118(2013).
 ------------------------------------------------------------------------------------------------------------------------
 
 main = do
