@@ -18,6 +18,10 @@ import BraHKet.Core
 --
 --     E^{pq}_{rs} = \sum_{\sigma,\tau=\alpha,\beta} a^{\dagger}_{p\sigma} a^{\dagger}_{q\tau} a_{s\tau} a_{r\sigma}. 
 --
+-- To compile:
+--
+-- shell> ghc ./THIS_FILE.hs
+--
 ------------------------------------------------------------------------------------------------------------------------
 
 main = do

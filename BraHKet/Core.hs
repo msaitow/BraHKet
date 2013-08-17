@@ -21,7 +21,7 @@
 
 module BraHKet.Core
 (
-  -- Acroyms
+  -- Acronyms
   Permut,
   Coeffs,
   QIndices,
@@ -700,7 +700,7 @@ normalOrderE term = if length otherOps /= 0
     tensors   = tTensor term
     operators = [x | x <- tensors, take (length sfGenName_) (tLabel x) == sfGenName_]
     others    = [x | x <- tensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
-    otherOps  = [x | x <- others, (take (length sdGenName_) (tLabel x) == sdGenName_) || tLabel x == creName_ || tLabel x == desName_]
+    otherOps  = [x | x <- others, tComm x == Operator]        
     initTerm  = makeTerm' $ others ++ [operators !! (length operators-1)]
     restEops  = take (length operators-1) operators
     numSteps  = (length operators) - 1
@@ -721,7 +721,7 @@ normalOrderE term = if length otherOps /= 0
 
 ---------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------
--- Normal ordering function for the multiple commutators of the spin-free excitaiton operators, [E1, [E2, [E3, .. En], .. ], ]
+-- Normal ordering function for the multiple commutators of the spin-free excitaiton operators, [E1, [E2, [E3, .. En]]]
 normalOrderCommE :: QTerm -> QTerms
 normalOrderCommE term = if length otherOps /= 0
                     then error "normalOrderCommE: Normal ordering among other types of excitation operators is not yet implemented."
@@ -730,7 +730,7 @@ normalOrderCommE term = if length otherOps /= 0
     tensors   = tTensor term
     operators = [x | x <- tensors, take (length sfGenName_) (tLabel x) == sfGenName_]
     others    = [x | x <- tensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
-    otherOps  = [x | x <- others, (take (length sdGenName_) (tLabel x) == sdGenName_) || tLabel x == creName_ || tLabel x == desName_]
+    otherOps  = [x | x <- others, tComm x == Operator]    
     initTerm  = makeTerm' (tNum term) $ others ++ [operators !! (length operators-1)]
     restEops  = take (length operators-1) operators
     numSteps  = (length operators) - 1
@@ -742,21 +742,13 @@ normalOrderCommE term = if length otherOps /= 0
       where
         newTensors   = zipWith (:) ( replicate (length currentTerms) (last restEs) ) $ fmap (tTensor) currentTerms
         factors      = fmap (tNum) currentTerms
-        signs        = fmap (getSign) factors
         newTerms     = zipWith (makeTerm') factors newTensors -- :: QTerms
         orderedTerms = concat $ fmap (contractComm) newTerms
         
-    -- Returns terms with correct prefactors and tensors -- Buggy [1]
+    -- Returns terms with correct prefactors and tensors
     makeTerm' :: Double -> QTensors -> QTerm
     makeTerm' myFactor tenten = baseTerm myFactor (tCoeff term) (tenten)
 
-    -- Returns signs
-    getSign :: Double -> Double
-    getSign num
-      | num >= 1.0 =  1.0
-      | num == 0.0 =  0.0
-      | otherwise  = -1.0
-    
     -- Returns normal ordered results of [E1, E2]
     contractComm :: QTerm -> QTerms
     contractComm thisTerm
@@ -771,7 +763,7 @@ normalOrderCommE term = if length otherOps /= 0
         withoutMaximum_e1e2 = filter (\x -> not $ isMaxE x) $ contractGen thisTerm
         withoutMaximum_e2e1 = filter (\x -> not $ isMaxE x) $ contractGen negativeTerm
 
-        -- Returns true if the terms has thr generator of maximum rank that can be formed from E1 and E2
+        -- Returns true if the term has the generator of maximum rank that can be formed from E1 and E2
         isMaxE :: QTerm -> Bool
         isMaxE kore
           | length myEs /= 1 = False
@@ -782,16 +774,18 @@ normalOrderCommE term = if length otherOps /= 0
 
 ---------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------
--- Contract given two generators
+-- Contract given two spin-free excitation operators
 contractGen :: QTerm -> QTerms
 contractGen thisTerm
-  | (length incommutables) >  2 = error "contractGen: Length of operators given should be shorter than or qeual to 2."
+  | (length otherOps) /= 0      = error "contractGen: Normal ordering with other type of operator is not yet implemented."
+  | (length incommutables)  > 2 = error "contractGen: Length of operators given should be shorter than or qeual to 2."
   | (length incommutables) == 2 = concat . fmap (fmap makeTerm) $ fmap (makeContractions) [0..(min order1 order2)]
-  | otherwise                   = [thisTerm]
+  | otherwise                                             = [thisTerm]
   where
     thisTensors = tTensor thisTerm
     commutables   = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
     incommutables = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) == sfGenName_]
+    otherOps      = [x | x <- commutables, tComm x == Operator]
     e1 = incommutables !! (length incommutables-2)
     e2 = incommutables !! (length incommutables-1)
     order1     = floor $ (fromIntegral $ length $ tIndices e1) / (fromIntegral 2)

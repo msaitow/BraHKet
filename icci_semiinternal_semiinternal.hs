@@ -18,6 +18,10 @@ import BraHKet.Core
 --
 --     E^{pq}_{rs} = \sum_{\sigma,\tau=\alpha,\beta} a^{\dagger}_{p\sigma} a^{\dagger}_{q\tau} a_{s\tau} a_{r\sigma}. 
 --
+-- To compile:
+--
+-- shell> ghc ./THIS_FILE.hs
+--
 ------------------------------------------------------------------------------------------------------------------------
 
 main = do
@@ -85,4 +89,4 @@ main = do
   print $ "vev_v2      : " ++ (show $ vev2)  
   print $ "combined_h1 : " ++ (show $ combineTerms survived1)
   print $ "combined_v2 : " ++ (show $ combineTerms survived2)
-
+  print $ "length >> " ++ (show $ (length $ combineTerms survived1) + (length $ combineTerms survived2))
