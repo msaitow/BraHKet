@@ -1,6 +1,9 @@
 
 module BraHKet.Utils
 (
+  eliminatePerm, -- Returns the permutations by eliminating the redundant members  
+  decompPerm,    -- Decompose the given permutations into the irreducible cyclic permutations
+  decompPerm',   -- Decompose the given permutations into the irreducible cyclic permutations  
   makeFlat,      -- Returns flattered list of pairs
   makeFlat2,     -- Returns flattered list of pairs
   allDiff,       -- Returns true if all the elements are different from the others
@@ -17,7 +20,7 @@ module BraHKet.Utils
 
 import Data.List
 import qualified Data.Maybe as Maybe
-
+import qualified Data.Map as Map
 
 -- Make flattered list like
 -- [(i1,e1),(i2,e2)..(in,en)] => [i1,i2..in,e1,e2..en]
@@ -123,3 +126,75 @@ makePermSFRDM order =
   let base  = permutations [0..order-1]
       tails = fmap (fmap (\x -> x + order)) base
   in (zipWith (++) tails base) ++ makePermSFGen order
+
+-- Decompose the given permutaitons into irreducible cyclcic permutations
+decompPerm :: ([Int],[Int]) -> [[(Int, Int)]]
+decompPerm myPerm = nub $ fmap sort $ fmap (decompUni myPerm) $ fst myPerm
+  where
+    decompUni :: ([Int],[Int]) -> Int -> [(Int, Int)]
+    decompUni permut num
+      | length (fst permut) == 0 || length (snd permut) == 0 = []
+      | length (nub (fst permut)) /= length (fst permut)     = error "decomposePerm: [[Int]] data should not contain the redundant value."
+      | sort (fst permut) /= sort (snd permut)               = error "decomposePerm: First and second [[Int]] should be composed of sama numbers."
+      | length (fst permut) /= length (snd permut)           = error "decomposePerm: Algorithmic error occured."
+      | otherwise                                            = getPermPath num num
+      where
+
+        keyOne = Map.fromList $ zip (fst permut) (snd permut) -- fst is the key -> returns snd
+        keyTwo = Map.fromList $ zip (snd permut) (fst permut) -- snd is the key -> returns fst
+
+        getPermPath :: Int -> Int -> [(Int, Int)]
+        getPermPath finalNum thisNum
+          | finalNum == nextSnd = [(thisNum, thisSnd), (thisSnd, nextSnd)]
+          | otherwise           = (thisNum, thisSnd) : getPermPath finalNum thisSnd
+          where
+            thisSnd = Maybe.fromJust $ Map.lookup thisNum keyOne -- Snd num
+            nextSnd = Maybe.fromJust $ Map.lookup thisSnd keyOne -- Snd num (since thisSnd == nextFst)
+
+
+-- Decompose the given permutaitons into irreducible cyclcic permutations (make sure this doesn't generate any error if the input isn't a permutations)
+decompPerm' :: ([Int],[Int]) -> [[(Int, Int)]]
+decompPerm' myPerm = nub $ fmap sort $ fmap (decompUni myPerm) $ fst myPerm
+  where
+    decompUni :: ([Int],[Int]) -> Int -> [(Int, Int)]
+    decompUni permut num
+      | length (fst permut) == 0 || length (snd permut) == 0 = []
+      | length (nub (fst permut)) /= length (fst permut)     = []
+      | sort (fst permut) /= sort (snd permut)               = []
+      | length (fst permut) /= length (snd permut)           = []
+      | otherwise                                            = getPermPath num num
+      where
+
+        keyOne = Map.fromList $ zip (fst permut) (snd permut) -- fst is the key -> returns snd
+        keyTwo = Map.fromList $ zip (snd permut) (fst permut) -- snd is the key -> returns fst
+
+        getPermPath :: Int -> Int -> [(Int, Int)]
+        getPermPath finalNum thisNum
+          | finalNum == nextSnd = [(thisNum, thisSnd), (thisSnd, nextSnd)]
+          | otherwise           = (thisNum, thisSnd) : getPermPath finalNum thisSnd
+          where
+            thisSnd = Maybe.fromJust $ Map.lookup thisNum keyOne -- Snd num
+            nextSnd = Maybe.fromJust $ Map.lookup thisSnd keyOne -- Snd num (since thisSnd == nextFst)
+
+
+-- -- Make permutations by eliminating the redundant members, e.g, ([1,2,3],[3,5,1]) -> ([1,3],[3,1)
+-- eliminatePerm :: ([Int],[Int]) -> ([Int],[Int])
+-- eliminatePerm permut = (fmap (fst) filtered, fmap (snd) filtered)
+--   where    
+--     zipOne = zip (fst permut) (snd permut)
+--     filtered = [x | x <- zipOne, (fst x) `elem` (snd permut) && (snd x) `elem` (fst permut)]
+
+-- Make permutations by eliminating the redundant members, e.g, ([1,2,3],[3,5,1]) -> ([1,3],[3,1)
+eliminatePerm :: ([Int],[Int]) -> ([Int],[Int])
+--eliminatePerm permut = unzip $ nub $ concat champ
+eliminatePerm permut = champ
+  where    
+    zipOnes     = fmap unzip $ subsequences $ zip (fst permut) (snd permut)
+    closedPerms = filter isClosed zipOnes
+    maxLen      = maximum $ fmap (length . fst) closedPerms
+    champ       = (filter ((\x -> (length x) == maxLen) . fst) closedPerms) !! 0
+
+    -- Whether the give pair of numbers can be a permutations
+    isClosed :: ([Int],[Int]) -> Bool
+    isClosed (perm_f, perm_s) = sort perm_f == sort perm_s
+        

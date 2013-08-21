@@ -75,6 +75,7 @@ module BraHKet.Core
   normalOrderCommE, -- NO for the multiple commutatos of the spin-free generator
   contractGen,      -- Contract two spin-free generators
   takeVEV,          -- Take vacuum expectation value
+  contractCoreSF,   -- Contarct core operator in the spin-free density matrix  
 
   ----------------------------------------
   -- Auxiliary data
@@ -721,7 +722,7 @@ normalOrderE term = if length otherOps /= 0
 
 ---------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------
--- Normal ordering function for the multiple commutators of the spin-free excitaiton operators, [E1, [E2, [E3, .. En]]]
+-- Normal ordering function for the multiple commutators of the spin-free excitaiton operators, [E1, [E2, [E3, .. En]] .. ]
 normalOrderCommE :: QTerm -> QTerms
 normalOrderCommE term = if length otherOps /= 0
                     then error "normalOrderCommE: Normal ordering among other types of excitation operators is not yet implemented."
@@ -871,3 +872,122 @@ takeVEV terms = fmap Maybe.fromJust $ filter (\x -> x /= Nothing) $ fmap (uniVEV
         makeNewTensor konoTensor
           | take (length sfGenName_) (tLabel konoTensor) == sfGenName_ = baseSFRDM (tIndices konoTensor)
           | otherwise                                                  = konoTensor
+
+
+---------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------
+-- Contract core operator in the spin-free density matrix
+contractCoreSF :: QTerm -> QTerms
+contractCoreSF thisTerm
+  | length rdms /= 1                       = [thisTerm]
+  | length ucorePairs /= length lcorePairs = []
+  | otherwise                              = zipWith3 baseTerm newFactors newCoeffs newTensors
+  where
+    factor  = tNum thisTerm
+    tensors = tTensor thisTerm
+    rdms    = [x | x <- tensors, take (length sfRDMName_) (tLabel x) == sfRDMName_]
+    others  = [x | x <- tensors, take (length sfRDMName_) (tLabel x) /= sfRDMName_]
+    theRDM  = rdms !! 0
+    order   = floor $ (fromIntegral $ length $ tIndices theRDM) / (fromIntegral 2)
+
+    -- Index-Number pairs [(QIndex, Int)]
+    indPairs   = zip (tIndices theRDM) [0..((length $ tIndices theRDM)-1)]
+    upperPairs = take (order) indPairs
+    lowerPairs = fmap (\(x,y)->(x,y-order)) $ reverse $ take (order)$ reverse indPairs 
+
+    -- Number-Index pairs [(Int, QIndex)]
+    numPairs  = fmap (\(x,y)->(y,x)) indPairs
+    unumPairs = fmap (\(x,y)->(y,x)) upperPairs
+    lnumPairs = fmap (\(x,y)->(y,x)) lowerPairs
+
+    ------------------
+    unumMap   = Map.fromList unumPairs -- Position :: Int -> QIndex
+    lnumMap   = Map.fromList lnumPairs -- Position :: Int -> QIndex
+    ------------------
+    
+    ucorePairs = [x | x <- upperPairs, (iSpace $ fst x) == Core]
+    lcorePairs = [x | x <- lowerPairs, (iSpace $ fst x) == Core]
+    
+    ucPos = fmap (snd) ucorePairs -- Position of the upper core index
+    lcPos = fmap (snd) lcorePairs -- Position of the lower core index
+
+    -- Form the core contraction pairs to constract the Kronecker's delta
+    lcTemp = List.permutations lcPos
+    ucTemp = take (length lcTemp) $ repeat ucPos
+    corePos = zip ucTemp lcTemp
+
+    ------------------------------------
+    -- Body of this function -----------
+    ------------------------------------
+    kDeltas   = fmap formKDeltas corePos
+    newGenPos = fmap formNewGen corePos
+    newGens   = fmap formSFGen newGenPos
+    totalPos  = zipWith (combineListP) corePos newGenPos
+    signs     = fmap determineSign totalPos
+    factors   = fmap determineFactor corePos
+
+    newFactors = fmap (factor*) $ zipWith (*) signs factors
+    newTensors = fmap (++others) $ zipWith (combineTensorList) kDeltas newGens 
+    newCoeffs  = take (length newTensors) $ repeat (tCoeff thisTerm)
+    -------------------------------------
+    -------------------------------------
+    
+    -- Returns the index list for forming the new spin-free excitation operator
+    formNewGen :: ([Int], [Int]) -> ([Int], [Int])
+    formNewGen myCoreInds = if List.sort lncInds == List.sort newlncInds then (uncInds, newlncInds) else error "fromNewGen: Algorithmic error occured."
+      where
+        --ucMap = Map.fromList $ zip (fst myCoreInds) (snd myCoreInds) -- -> Upper index is a key -> lower index
+        lcMap = Map.fromList $ zip (snd myCoreInds) (fst myCoreInds) -- -> Lower index is a key -> upper index
+
+        uncInds    = filter (\x -> not $ x `elem` (fst myCoreInds)) [0..(order-1)]
+        lncInds    = filter (\x -> not $ x `elem` (snd myCoreInds)) [0..(order-1)]
+        newlncInds = fmap searchIndex uncInds
+        
+        -- Seeks for the lower index of the generator
+        searchIndex :: Int -> Int
+        searchIndex thisPos
+          | nextUc == Nothing                                     = thisPos
+          | not ((Maybe.fromJust nextUc) `elem` (snd myCoreInds)) = Maybe.fromJust nextUc
+          | otherwise                                             = searchIndex $ Maybe.fromJust nextUc
+          where nextUc = Map.lookup thisPos lcMap
+
+    -- Determine the factors of each term
+    determineFactor :: ([Int], [Int]) -> Double
+    determineFactor myCoreInds = fromIntegral $ 2 ^ (length $ Utils.decompPerm $ Utils.eliminatePerm myCoreInds)
+    
+    -- Determine the signs of the term
+    determineSign :: ([Int], [Int]) -> Double
+    determineSign myAllInds = fromIntegral $ Utils.permuteSign (fst myAllInds) (snd myAllInds)
+
+    -- Returns upper index
+    returnUInds :: Int -> QIndex
+    returnUInds myPos = if newPos == Nothing then error "returnUInds: Algorithmic error occured." else Maybe.fromJust newPos
+      where newPos = Map.lookup myPos unumMap
+
+    -- Returns lower index
+    returnLInds :: Int -> QIndex
+    returnLInds myPos = if newPos == Nothing then error "returnUInds: Algorithmic error occured." else Maybe.fromJust newPos
+      where newPos = Map.lookup myPos lnumMap
+
+    -- Form kdeltas
+    formKDeltas :: ([Int], [Int]) -> QTensors
+    formKDeltas myCoreInds = fmap (\(x,y) -> baseKD [x,y]) kDInds
+      where kDInds = zip (fmap returnUInds $ fst myCoreInds) (fmap returnLInds $ snd myCoreInds)
+
+    -- Form SFGen
+    formSFGen :: ([Int], [Int]) -> Maybe QTensor
+    formSFGen myGenInds
+      | length (fst myGenInds) /= 0 = Just $ baseSFRDM $ (fmap returnUInds (fst myGenInds)) ++ (fmap returnLInds (snd myGenInds))
+      | otherwise                   = Nothing
+
+    -- Combine the Maybe SFGen and Kronecker's deltas to form newTensors :: QTensors
+    combineTensorList :: QTensors -> Maybe QTensor -> QTensors
+    combineTensorList kds gen
+      | gen == Nothing = kds
+      | otherwise      = (Maybe.fromJust gen) : kds
+
+    -- Combine ([x], [y]) -> ([x'],[y']) -> ([x]++[x'],[y]++[y'])
+    combineListP :: (Ord a) => ([a], [a]) -> ([a], [a]) -> ([a], [a])
+    combineListP  (x1, y1) (x2, y2) = (x1++x2, y1++y2)
+        
+    
