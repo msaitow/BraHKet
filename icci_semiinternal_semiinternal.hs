@@ -20,9 +20,9 @@ import BraHKet.Core
 --
 -- To compile:
 --
--- shell> ghc ./THIS_FILE.hs
+--     shell> ghc ./THIS_FILE.hs
 --
--- For detail, see Journal of Chemical Physics 139, 044118(2013).
+-- For more details, see Journal of Chemical Physics 139, 044118(2013).
 ------------------------------------------------------------------------------------------------------------------------
 
 main = do
