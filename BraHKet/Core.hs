@@ -69,13 +69,14 @@ module BraHKet.Core
   generateAllConfs,
   killKDeltas,
   combineTerms,
-  normalOrderA,     -- NO for Cre/Des operators
-  normalOrderG,     -- NO for spin-dependent generator
-  normalOrderE,     -- NO for spin-free generator
-  normalOrderCommE, -- NO for the multiple commutatos of the spin-free generator
-  contractGen,      -- Contract two spin-free generators
-  takeVEV,          -- Take vacuum expectation value
-  contractCoreSF,   -- Contarct core operator in the spin-free density matrix  
+  normalOrderA,         -- NO for Cre/Des operators
+  normalOrderG,         -- NO for spin-dependent generator
+  normalOrderE,         -- NO for spin-free generator
+  normalOrderCommE,     -- NO for the multiple commutatos of the spin-free generator
+  contractGen,          -- Contract two spin-free generators
+  takeVEV,              -- Take vacuum expectation value
+  contractCoreSF,       -- Contarct core operator in the spin-free density matrix
+  generateInteractions ,-- Decompose generic indices into the interactions
 
   ----------------------------------------
   -- Auxiliary data
@@ -433,7 +434,9 @@ generateAllConfs term = concat . fmap (rotateAllIndices) $ concat . fmap (rotate
 
 -- Kill Kronecker's delta (Still buggy??)
 killKDeltas :: QTerm -> Maybe QTerm
-killKDeltas term = if foldr (||) False $ fmap isZero kdList then Nothing else Just (QTerm (tNum term) (tCoeff term) exceptkDeltas)
+killKDeltas term
+  | length kdList == 0 = Just term
+  | otherwise          = if foldr (||) False $ fmap isZero kdList then Nothing else Just (QTerm (tNum term) (tCoeff term) exceptkDeltas)
   where
     -- First, construct a Map [(killed Index, killer Index)]
     tensors = tTensor term
@@ -922,7 +925,8 @@ contractCoreSF thisTerm
     kDeltas   = fmap formKDeltas corePos
     newGenPos = fmap formNewGen corePos
     newGens   = fmap formSFGen newGenPos
-    totalPos  = zipWith (combineListP) corePos newGenPos
+    --totalPos  = zipWith (combineListP) corePos newGenPos
+    totalPos  = zipWith (\(x1,y1) (x2,y2) -> (x1++x2, y1++y2)) corePos newGenPos    
     signs     = fmap determineSign totalPos
     factors   = fmap determineFactor corePos
 
@@ -986,8 +990,48 @@ contractCoreSF thisTerm
       | gen == Nothing = kds
       | otherwise      = (Maybe.fromJust gen) : kds
 
-    -- Combine ([x], [y]) -> ([x'],[y']) -> ([x]++[x'],[y]++[y'])
-    combineListP :: (Ord a) => ([a], [a]) -> ([a], [a]) -> ([a], [a])
-    combineListP  (x1, y1) (x2, y2) = (x1++x2, y1++y2)
+--     -- Combine ([x], [y]) -> ([x'],[y']) -> ([x]++[x'],[y]++[y'])
+--     combineListP :: (Ord a) => ([a], [a]) -> ([a], [a]) -> ([a], [a])
+--     combineListP  (x1, y1) (x2, y2) = (x1++x2, y1++y2)
         
     
+---------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------
+-- Decompose the generic indices into various orbitals indices
+generateInteractions :: [QSpace] -> QTerm -> QTerms
+generateInteractions targetSpaces thisTerm
+  | length genInds == 0 = [thisTerm]
+  | otherwise           = fmap replaceSpace allSpaces 
+    where
+      tensors = tTensor thisTerm
+      indices = getSummedBody thisTerm
+      genInds = filter (\x -> iSpace x == Generic) indices
+      numGens = length genInds
+
+      -- All possible combinations of MO spaces, [[C,C,C], [C,C,A], [C,A,C],..]
+      allSpaces = List.nub $ concat $ fmap List.permutations $ List.nub . filter (\x -> length x == numGens) $ List.subsequences $ concat $ fmap (\x -> take numGens $ repeat x) targetSpaces
+
+      -- Replace the MO space of the term according to the given combinations of the QSpace
+      replaceSpace :: [QSpace] -> QTerm
+      replaceSpace mySpaces = QTerm (tNum thisTerm) (tCoeff thisTerm) replacedTensors
+        where
+          killerIndices  = zipWith uniReplace mySpaces genInds
+          killSchedule   = Map.fromList $ zip genInds killerIndices -- [(killed generic index, killer index)]
+          replacedTensors = fmap replaceTensor tensors
+
+          -- Unit replacement function
+          uniReplace :: QSpace -> QIndex -> QIndex
+          uniReplace space index = QIndex (iLabel index) space (isDummy index)
+
+          -- Replace given tensor's indices according to the kill schedule
+          replaceTensor :: QTensor -> QTensor
+          replaceTensor myTensor = QTensor (tLabel myTensor) replacedInds (tSymm myTensor) (tComm myTensor)
+            where
+              replacedInds = fmap (replaceIndex) (tIndices myTensor)
+
+              -- Replace the given index if the index should be replaced
+              replaceIndex :: QIndex -> QIndex
+              replaceIndex givenInd
+                | newInd == Nothing = givenInd
+                | otherwise         = Maybe.fromJust newInd
+                where newInd = Map.lookup givenInd killSchedule
