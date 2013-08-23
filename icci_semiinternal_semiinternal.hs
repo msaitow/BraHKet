@@ -66,6 +66,8 @@ main = do
     ----------------------------------------------------------------------------------------
     vev1      = takeVEV ordered1
     survived1 = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) vev1
+    decomposed1 = concat $ fmap contractCoreSF $ fmap masquerade $ concat $ fmap (generateInteractions [Core, Active]) $ combineTerms survived1
+    dsurvived1  = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) decomposed1 
 
     -----------------------------------------------------------------------------    
          --           1
@@ -81,6 +83,8 @@ main = do
     ----------------------------------------------------------------------------------------
     vev2      = takeVEV ordered2
     survived2 = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) vev2
+    decomposed2 = concat $ fmap contractCoreSF $ fmap masquerade $ concat $ fmap (generateInteractions [Core, Active]) $ combineTerms survived2
+    dsurvived2  = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) decomposed2
     
   print $ "inTerm_h1   : " ++ (show term1)
   print $ "inTerm_v2   : " ++ (show term2)
@@ -91,3 +95,7 @@ main = do
   print $ "combined_h1 : " ++ (show $ combineTerms survived1)
   print $ "combined_v2 : " ++ (show $ combineTerms survived2)
   print $ "length >> " ++ (show $ (length $ combineTerms survived1) + (length $ combineTerms survived2))
+  print $ "dsurvived1   : " ++ (show dsurvived1)
+  print $ "dsurvived2   : " ++ (show dsurvived2)  
+  print $ "dcombined_h1 : " ++ (show $ combineTerms dsurvived1)
+  print $ "dcombined_v2 : " ++ (show $ combineTerms dsurvived2)
