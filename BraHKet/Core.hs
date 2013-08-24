@@ -77,7 +77,8 @@ module BraHKet.Core
   takeVEV,              -- Take vacuum expectation value
   contractCoreSF,       -- Contarct core operator in the spin-free density matrix
   generateInteractions ,-- Decompose generic indices into the interactions
-
+  contractVirtSF,       -- Screen terms with the  virtual operator in the density
+  
   ----------------------------------------
   -- Auxiliary data
   ----------------------------------------
@@ -1035,3 +1036,20 @@ generateInteractions targetSpaces thisTerm
                 | newInd == Nothing = givenInd
                 | otherwise         = Maybe.fromJust newInd
                 where newInd = Map.lookup givenInd killSchedule
+
+
+---------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------
+-- Screen terms with virtual operator in the spin-free reduced density matrix
+contractVirtSF :: QTerms -> QTerms
+contractVirtSF koreraTerms = filter (allClear) koreraTerms
+  where
+    allClear :: QTerm -> Bool
+    allClear kore
+      | length rdms   == 0 = True
+      | length virOps == 0 = True
+      | otherwise          = False
+      where
+        tensors = tTensor kore
+        rdms    = [x | x <- tensors, take (length sfRDMName_) (tLabel x) == sfRDMName_]
+        virOps  = filter (\x -> iSpace x == Virtual) $ List.nub $ concat $fmap (tIndices) rdms
