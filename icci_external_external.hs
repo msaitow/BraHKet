@@ -61,9 +61,11 @@ main = do
     ordered1    = normalOrderE term1
     vev1        = takeVEV ordered1
     survived1   = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) vev1
-    decomposed1 = concat $ fmap contractCoreSF $ fmap masquerade $ concat $ fmap (generateInteractions [Core, Active]) $ combineTerms survived1
+    combined1   = combineTerms survived1    
+    decomposed1 = concat $ fmap contractCoreSF $ fmap masquerade $ concat $ fmap (generateInteractions [Core, Active]) $ combined1
     dsurvived1  = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) decomposed1 
-  
+    dcombined1  = combineTerms dsurvived1
+                    
     -----------------------------------------------------------------------------    
          --           1
          --  Define: --- E^{ij}_{ab} V^{pq}_{rs} E^{pq}_{rs} T^{cd}_{kl} E^{cd}_{kl}
@@ -72,19 +74,21 @@ main = do
     term2       = baseTerm 0.5 [] [eL, v, eH2, t, eR]
     ordered2    = normalOrderE term2
     vev2        = takeVEV ordered2
+    combined2   = combineTerms survived2    
     survived2   = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) vev2
-    decomposed2 = concat $ fmap contractCoreSF $ fmap masquerade $ concat $ fmap (generateInteractions [Core, Active]) $ combineTerms survived2
+    decomposed2 = concat $ fmap contractCoreSF $ fmap masquerade $ concat $ fmap (generateInteractions [Core, Active]) $ combined2
     dsurvived2  = fmap (fromJust) $ filter (\x -> x /= Nothing) $ fmap (killKDeltas) decomposed2
+    dcombined2  = combineTerms dsurvived2
     
   print $ "inTerm_h1    : " ++ (show term1)
   print $ "inTerm_v2    : " ++ (show term2)
-  print $ "outTerm_h1   : " ++ (show $ ordered1)
-  print $ "outTerm_v2   : " ++ (show $ ordered2)
-  print $ "vev_h1       : " ++ (show $ vev1)
-  print $ "vev_v2       : " ++ (show $ vev2)  
-  print $ "combined_h1  : " ++ (show $ combineTerms survived1)
-  print $ "combined_v2  : " ++ (show $ combineTerms survived2)  
+  print $ "outTerm_h1   : " ++ (show ordered1)
+  print $ "outTerm_v2   : " ++ (show ordered2)
+  print $ "vev_h1       : " ++ (show vev1)
+  print $ "vev_v2       : " ++ (show vev2)  
+  print $ "combined_h1  : " ++ (show combined1)
+  print $ "combined_v2  : " ++ (show combined2)  
   print $ "dsurvived1   : " ++ (show dsurvived1)
   print $ "dsurvived2   : " ++ (show dsurvived2)  
-  print $ "dcombined_h1 : " ++ (show $ combineTerms dsurvived1)
-  print $ "dcombined_v2 : " ++ (show $ combineTerms dsurvived2)
+  print $ "dcombined_h1 : " ++ (show dcombined1)
+  print $ "dcombined_v2 : " ++ (show dcombined2)
