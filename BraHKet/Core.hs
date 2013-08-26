@@ -477,12 +477,38 @@ killKDeltas term
     exceptkDeltas = [x | x <- newTensors, not (tLabel x == kDName_ && (tIndices x) !! 0 == (tIndices x) !! 1)]
     --exceptkDeltas = [x | x <- newTensors]    
 
+-- svd -- -- Function to return the combined terms. This can be implemented by using State monad more elegantly?
+-- svd -- combineTerms :: QTerms -> QTerms
+-- svd -- combineTerms terms = filter (\x -> (tNum x) /= 0.0) $ fmap (changeFactors) origTerms
+-- svd --   where
+-- svd --     maxTerms = fmap (maximum . generateAllConfs) terms
+-- svd --     origTerms = List.nub $ fmap (makeUniTerm) maxTerms
+-- svd -- 
+-- svd --     makeUniTerm :: QTerm -> QTerm 
+-- svd --     makeUniTerm kore = QTerm 1.0 (tCoeff kore) (tTensor kore)
+-- svd -- 
+-- svd --     changeFactors :: QTerm -> QTerm
+-- svd --     changeFactors are = baseTerm myFactor (tCoeff are) (tTensor are)
+-- svd --       where myFactor = collectFactors are maxTerms
+-- svd -- 
+-- svd --     collectFactors :: QTerm -> QTerms -> Double
+-- svd --     collectFactors kore korera = 
+-- svd --       let
+-- svd --         arera = [x | x <- korera, isAdditive kore x]
+-- svd --       in sum $ fmap (tNum) arera
+
 -- Function to return the combined terms. This can be implemented by using State monad more elegantly?
 combineTerms :: QTerms -> QTerms
 combineTerms terms = filter (\x -> (tNum x) /= 0.0) $ fmap (changeFactors) origTerms
   where
-    maxTerms = fmap (maximum . generateAllConfs) terms
+    maxTerms = fmap (maximum . generateConfs) terms
     origTerms = List.nub $ fmap (makeUniTerm) maxTerms
+
+    generateConfs :: QTerm -> QTerms
+    generateConfs konoTerm = if length konoTensor == (length $ List.nub konoTensor)
+                             then concat . fmap (rotateAllIndices) $ allRenames konoTerm
+                             else generateAllConfs konoTerm
+      where konoTensor = tTensor konoTerm
 
     makeUniTerm :: QTerm -> QTerm 
     makeUniTerm kore = QTerm 1.0 (tCoeff kore) (tTensor kore)
