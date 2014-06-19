@@ -2,7 +2,7 @@
 --  BraHKet :: <H> A Haskell Module For Fermionic Many-Body Operators <H>
 --                            Masaaki Saitow
 -- ///////////////////////////////////////////////////////////////////////
---------------------------------------------------------------------------
+--
 --                                      ,--,         
 --                                    ,--.'|         
 --                          ,--.   ,--,  | :.--,     
@@ -17,8 +17,27 @@
 --                              ;   : ;--'           
 --                              |   ,/               
 --                              '---'                
---------------------------------------------------------------------------
+--
+-- Copyright (C) 2013-2014 by Masaaki Saitow (msaitow514@gmail.com)
+--
+-- This program is free software; you can redistribute it and/or modify
+-- it under the terms of the GNU General Public License as published by
+-- the Free Software Foundation; either version 2 of the License, or
+-- (at your option) any later version
+--
+-- This program is distributed in the hope that it will be useful,
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- GNU General Public License for more details.
+--
+-- You should have received a copy of the GNU General Public License
+-- along with this program; if not, write to the Free Software
+-- Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA
+-- ///////////////////////////////////////////////////////////////////////////
 
+----------------------------------
+-- Main module -------------------
+----------------------------------
 module BraHKet.Core
 (
   -- Acronyms
@@ -29,27 +48,34 @@ module BraHKet.Core
   QTerms,
   
   -- Predefined names for various tensors
-  creName_,   -- Creation operators
-  desName_,   -- Destruction operators 
-  sfGenName_, -- Spin-free generators
-  sfRDMName_, -- Spin-free density
-  sdGenName_, -- Spin-dependent generator
-  kDName_,    -- Kronecker's delta
-  h1Name_,    -- One-body int
-  h2Name_,    -- Two-body int
+  creName_,     -- Creation operators
+  desName_,     -- Destruction operators 
+  sfGenName_,   -- Spin-free generators
+  sfRDMName_,   -- Spin-free density
+  sdGenName_,   -- Spin-dependent generator
+  kDName_,      -- Kronecker's delta
+  h1Name_,      -- One-body int
+  h2Name_,      -- Two-body int
+  casFockName_, -- CAS Fock Matrix
 
   -- Functions for QIndex data
   QIndex(..),
+  alphaIndex,   -- Alpha-spin orbital index
+  betaIndex,    -- Beta-spin orbital index
+  sfIndex,      -- Spin-free index
+  soIndex,      -- Spin-orbital index   
   
   -- Functions for QTensor data
   QTensor(..),
   baseTensor,  -- Generic tensor
+  sfTensor,    -- Spin-free tensor
   baseTensorP, -- Generic tensor
   baseOne,     -- One-body int
   baseKD,      -- Kronecker's delta
   baseERI,     -- Two-body int
   baseSFGen,   -- Spin-free generator
   baseSFRDM,   -- Spin-free density-matrix
+  baseCFock,   -- CAS Fock Matrix
   baseSDGen,   -- Spin-dependent generator  
   baseCre,     -- Creation operator
   baseDes,     -- Destruction operator
@@ -59,7 +85,7 @@ module BraHKet.Core
   
   -- Functions for QTerm data
   QTerm(..),
-  baseTerm,      -- Generic term
+  baseTerm,            -- Generic term
   getSummedBody,
   isAdditive,
   masquerade,
@@ -69,19 +95,13 @@ module BraHKet.Core
   generateAllConfs,
   killKDeltas,
   combineTerms,
-  normalOrderA,         -- NO for Cre/Des operators
-  normalOrderG,         -- NO for spin-dependent generator
-  normalOrderE,         -- NO for spin-free generator
-  normalOrderCommE,     -- NO for the multiple commutatos of the spin-free generator
-  contractGen,          -- Contract two spin-free generators
-  takeVEV,              -- Take vacuum expectation value
-  contractCoreSF,       -- Contarct core operator in the spin-free density matrix
-  generateInteractions ,-- Decompose generic indices into the interactions
-  contractVirtSF,       -- Screen terms with the  virtual operator in the density
+  canonicalizeTerm,  
+  generateInteractions, -- Decompose generic indices into the interactions
   
   ----------------------------------------
   -- Auxiliary data
   ----------------------------------------
+  QSpin(..),
   QSum(..),    
   QNature(..),     
   QSpace(..)
@@ -107,20 +127,25 @@ type QTerms   = [QTerm]
 -------------------------------------------------------------------------
 -- @@ Tensor names
 -------------------------------------------------------------------------
-creName_   = "@Cre" :: String -- Creation operator
-desName_   = "@Des" :: String -- Destruction operator 
-sfGenName_ = "@E"   :: String -- Spin-free generator
-sfRDMName_ = "@D"   :: String -- Spin-free density
-sdGenName_ = "@G"   :: String -- Spin-dependent generator
-kDName_    = "@kD"  :: String -- Kronecker's delta
-h1Name_    = "@h1"  :: String -- One-body int
-h2Name_    = "@V2"  :: String -- Two-body int
-
+creName_     = "@Cre" :: String -- Creation operator
+desName_     = "@Des" :: String -- Destruction operator 
+sfGenName_   = "@E"   :: String -- Spin-free generator
+sfRDMName_   = "@D"   :: String -- Spin-free density
+sdGenName_   = "@G"   :: String -- Spin-dependent generator
+kDName_      = "@kD"  :: String -- Kronecker's delta
+h1Name_      = "@h1"  :: String -- One-body int
+h2Name_      = "@V2"  :: String -- Two-body int
+casFockName_ = "@cF"  :: String -- CAS Fock Matrix
 
 -- ///////////////////////////////////////////////////////////////////////
 -- // Fundamental classes to construct the fermionic many-body formulas
 -- ///////////////////////////////////////////////////////////////////////
 
+-------------------------------------------------------------------------
+-- @@ Data that represent the spin of the orbital index
+-------------------------------------------------------------------------
+data QSpin = Alpha | Beta | SpinFree | SpinOrbital deriving(Show, Eq, Ord)
+  
 -------------------------------------------------------------------------
 -- @@ Data that represents summation over the index
 -------------------------------------------------------------------------
@@ -136,16 +161,33 @@ data QNature = Operator | Classical deriving(Show, Eq, Ord)
 -------------------------------------------------------------------------
 data QSpace = Core | Active | Virtual | Generic deriving(Show, Eq, Ord)
 
--------------------------------------------------------------------------                                                        
+-------------------------------------------------------------------------             
 -- @@ Index class
 -------------------------------------------------------------------------
 data QIndex = QIndex { iLabel   :: String,
                        iSpace   :: QSpace,
+                       iSpin    :: QSpin,
                        isDummy  :: QSum
                      } deriving (Eq, Ord)
 
 instance Show QIndex where
-  show ind = "@(" ++ iLabel ind ++ ", " ++ show (iSpace ind) ++ ", " ++ if isDummy ind == Dummy then "Anonymous)" else "Universal)" 
+  show ind = "@(" ++ iLabel ind ++ ", " ++ show (iSpace ind) ++ ", " ++ show (iSpin ind) ++ ", " ++ if isDummy ind == Dummy then "Anonymous)" else "Universal)" 
+
+-- Standard constructor for the alpha-spin orbital index
+alphaIndex :: String -> QSpace -> QSum -> QIndex
+alphaIndex label space dummy = QIndex label space Alpha dummy
+
+-- Standard constructor for the beta-spin orbital index
+betaIndex :: String -> QSpace -> QSum -> QIndex
+betaIndex label space dummy = QIndex label space Beta dummy
+
+-- Standard constructor for the spin-free orbital index
+sfIndex :: String -> QSpace -> QSum -> QIndex
+sfIndex label space dummy = QIndex label space SpinFree dummy
+
+-- Standard constructor for the spin-free orbital index
+soIndex :: String -> QSpace -> QSum -> QIndex
+soIndex label space dummy = QIndex label space SpinOrbital dummy
 
 -------------------------------------------------------------------------
 -- @@ Tensor class
@@ -153,15 +195,25 @@ instance Show QIndex where
 data QTensor = QTensor { tLabel   :: String,   -- Name
                          tIndices :: QIndices, -- Indices
                          tSymm    :: Permut,   -- Permutation
-                         tComm    :: QNature       -- Whether commutable or not
+                         tComm    :: QNature   -- Whether commutable or not
                        } deriving (Eq, Ord)
 
 showTensor :: QTensor -> String
 showTensor ten =
-  let all1 = map (\x -> x ++ ",") $ foldr (:) [] $ fmap iLabel $ tIndices ten
-      all2 = foldl (++) [] all1
-      all3 = take ((length all2)-1) $ all2
-  in (tLabel ten ++ "(" ++ all3 ++ ")")
+  let
+    spinLabels = fmap repSpin $ tIndices ten
+    indLabels1 = map (\x -> x ++ ",") $ zipWith (++) (fmap iLabel $ tIndices ten) spinLabels
+    indLabels2 = foldl (++) [] indLabels1
+    indLabels3 = take ((length indLabels2)-1) $ indLabels2
+  in (tLabel ten ++ "(" ++ indLabels3 ++ ")")
+     where
+       repSpin :: QIndex -> String
+       repSpin myInd
+         | iSpin myInd == Alpha       = "(a)"
+         | iSpin myInd == Beta        = "(b)"
+         | iSpin myInd == SpinOrbital = "_"                                     
+         | iSpin myInd == SpinFree    = ""
+         | otherwise                  = error $ "showTensor: Can't handle this spin-state. >> " ++ (show $ iSpin myInd) ++ " << "
 
 instance Show QTensor where
   show = showTensor
@@ -169,23 +221,33 @@ instance Show QTensor where
 -- Standard constructor
 baseTensor :: String -> QIndices -> Permut -> QNature -> QTensor
 baseTensor label indices symm iscomm
-  | not lenSymm = error "QTensor: Lengths of given indices and symm mismatched."
-  | otherwise = QTensor label indices symm iscomm
-  where lenSymm =
+  | not lenSymm = error $ "QTensor: Lengths of given indices and symm mismatched. >> Label: " ++ label ++ " Indices: " ++ (show $ indices) ++ " << "
+  | otherwise = QTensor label indices mySymm iscomm
+  where 
+    mySymm  = if length symm == 0 then [[0..(length indices)-1]] else symm  
+    lenSymm =
           let lenInds = take (length symm) (repeat $ length indices)
           in lenInds == map length symm
+
+-- Standard constructor for the spin-free tensor
+sfTensor :: String -> QIndices -> Permut -> QNature -> QTensor
+sfTensor label indices symm iscomm = if allSF then baseTensor label indices symm iscomm else error "sfTensor: The orbital indices other than spin-free type detected."
+  where
+    allSF = foldl (&&) True $ fmap (\x -> iSpin x == SpinFree) indices
 
 -- Standard constructor that calls makePerms internally
 baseTensorP :: String -> QIndices -> Permut -> QNature -> QTensor
 baseTensorP label indices symm iscomm
   | not lenSymm = error "QTensor: Lengths of given indices and symm mismatched."
   | otherwise = QTensor label indices symm iscomm
-  where lenSymm =
-          let
-            allSymm = Utils.makePerms symm
-            lenInds = take (length allSymm) (repeat $ length indices)
-            lenSymm = map length allSymm
-          in lenInds == lenSymm
+  where 
+    mySymm  = if length symm == 0 then [[0..(length indices)-1]] else symm  
+    lenSymm =   
+      let
+        allSymm = Utils.makePerms symm
+        lenInds = take (length allSymm) (repeat $ length indices)
+        lenSymm = map length allSymm
+      in lenInds == lenSymm
 
 -- Constructor for the one-body integral tensor
 baseOne :: QIndices -> QTensor
@@ -215,9 +277,11 @@ baseERI inds
 -- Constructor for the spin-free unitary group generator
 baseSFGen :: QIndices -> QTensor
 baseSFGen inds
+  | allSF /= True     = error "QTensor: Spin-dependent indices detected in the baseSFGen."
   | odd $ length inds = error "QTensor: Number of indices given to the spin-free generator should be even number."
-  | otherwise = QTensor name inds genPerm Operator
+  | otherwise         = QTensor name inds genPerm Operator
   where
+    allSF = foldl (&&) True $ fmap (\x -> iSpin x == SpinFree) inds    
     order = floor $ (fromIntegral $ length inds) / (fromIntegral 2)
     name  = sfGenName_ ++ (show order)
     genPerm = Utils.makePermSFGen order
@@ -225,9 +289,11 @@ baseSFGen inds
 -- Constructor for the spin-dependent unitary group generator
 baseSDGen :: QIndices -> QTensor
 baseSDGen inds
+  | hasSF             = error "QTensor: Spin-free indices detected in the baseSDGen."
   | odd $ length inds = error "QTensor: Number of indices given to the spin-dependent generator should be even number."
   | otherwise = QTensor name inds genPerm Operator
   where
+    hasSF = foldl (||) False $ fmap (\x -> iSpin x == SpinFree) inds        
     order = floor $ (fromIntegral $ length inds) / (fromIntegral 2)
     name  = sdGenName_ ++ (show order)
     genPerm = Utils.makePermSFGen order
@@ -235,12 +301,18 @@ baseSDGen inds
 -- Constructor for the spin-free reduced-density matrix
 baseSFRDM :: QIndices -> QTensor
 baseSFRDM inds
+  | allSF /= True     = error "QTensor: Spin-dependent indices detected in the baseSFGen."
   | odd $ length inds = error "QTensor: Number of indices given to the spin-free density matrix should be even number."
   | otherwise = QTensor name inds genPerm Classical
   where
+    allSF = foldl (&&) True $ fmap (\x -> iSpin x == SpinFree) inds        
     order = floor $ (fromIntegral $ length inds) / (fromIntegral 2)
     name  = sfRDMName_ ++ (show order)
     genPerm = Utils.makePermSFRDM order
+
+-- Constructor for the CAS Fock matrix
+baseCFock :: (QIndex, QIndex) -> QTensor
+baseCFock (ind1, ind2) = QTensor casFockName_ [ind1, ind2] [[0, 1], [1, 0]] Classical 
 
 -- Constructor for the creation operator
 baseCre :: QIndex -> QTensor
@@ -249,12 +321,6 @@ baseCre ind = QTensor creName_ [ind] [[0]] Operator
 -- Constructor for the destruction operator
 baseDes :: QIndex -> QTensor
 baseDes ind = QTensor desName_ [ind] [[0]] Operator
-
--- -- Returns normal-ordered QTensor
--- tsortIndices :: QTensor -> QTensor
--- tsortIndices t = QTensor (tLabel t) sortedIndices (tSymm t) (tComm t)
---   where 
---     sortedIndices = maximum $ fmap (Utils.uniPermR $ tIndices t) $ tSymm t
 
 -- Returns normal-ordered QTensor
 tsortIndices :: QTensor -> QTensor
@@ -281,17 +347,12 @@ data QTerm = QTerm { tNum    :: Double,
                      tTensor :: QTensors
                    } deriving (Eq, Ord)
 
--- Messy -- instance Show QTerm where
--- Messy --   show term =
--- Messy --     let tensors = foldl (++) [] $ fmap (\x -> x ++ " ") $ fmap show $ tTensor term
--- Messy --         coeffs  = if length (tCoeff term) == 0 then "" else (foldl (++) [] (fmap show $ tCoeff term)) ++ " "
--- Messy --     in (show $ tNum term) ++ " " ++ coeffs ++ take ((length tensors)-1) tensors
-
 instance Show QTerm where
   show term =
     let tensors = foldl (++) [] $ fmap (\x -> x ++ " ") $ fmap show $ tTensor term
         coeffs  = if length (tCoeff term) == 0 then "" else (foldl (++) [] (fmap (++" ") $ tCoeff term))
-    in (show $ tNum term) ++ " " ++ coeffs ++ take ((length tensors)-1) tensors
+        mySign  = if (tNum term) >= 0.0 then "+" else ""
+    in mySign ++ (show $ tNum term) ++ " " ++ coeffs ++ take ((length tensors)-1) tensors
 
 -- Constructor for the QTerm class
 baseTerm :: Double -> Coeffs -> QTensors -> QTerm
@@ -315,40 +376,19 @@ masquerade t = QTerm (tNum t) (tCoeff t) ten
     getSummedInds term =
       let
         thisInds   = getSummedBody term
-        mapCore    = cMap thisInds 0
-        mapActive  = aMap thisInds 0
-        mapVirtual = vMap thisInds 0
-        mapGeneric = gMap thisInds 0
+        mapCore    = mapBase Core    thisInds 0
+        mapActive  = mapBase Active  thisInds 0
+        mapVirtual = mapBase Virtual thisInds 0
+        mapGeneric = mapBase Generic thisInds 0        
       in Map.fromList $ mapCore ++ mapActive ++ mapVirtual ++ mapGeneric
 
     changedList = getSummedInds t
     changeInds tenten = QTensor (tLabel tenten) inds (tSymm tenten) (tComm tenten)
       where
         inds = fmap (replaceInds) $ tIndices tenten
-        replaceInds i = if Map.lookup i changedList == Nothing then i else QIndex (Maybe.fromJust $ Map.lookup i changedList) (iSpace i) (isDummy i)
+        replaceInds i = if Map.lookup i changedList == Nothing then i else QIndex (Maybe.fromJust $ Map.lookup i changedList) (iSpace i) (iSpin i) (isDummy i)
         
     ten = fmap (changeInds) (tTensor t)
-
--- bug? -- -- Rename all the dummy indices
--- bug? -- masquerade :: QTerm -> QTerm
--- bug? -- masquerade t = QTerm (tNum t) (tCoeff t) ten
--- bug? --   where
--- bug? --     getSummedInds tenten =
--- bug? --       let
--- bug? --         thisInds   = tIndices tenten
--- bug? --         mapCore    = cMap (tIndices tenten) 0
--- bug? --         mapActive  = aMap (tIndices tenten) 0
--- bug? --         mapVirtual = vMap (tIndices tenten) 0
--- bug? --         mapGeneric = gMap (tIndices tenten) 0
--- bug? --       in Map.fromList $ mapCore ++ mapActive ++ mapVirtual ++ mapGeneric
--- bug? --          
--- bug? --     changeInds tenten = QTensor (tLabel tenten) inds (tSymm tenten) (tComm tenten)
--- bug? --       where
--- bug? --         allIndices = getSummedInds tenten
--- bug? --         inds = fmap (replaceInds) $ tIndices tenten
--- bug? --         replaceInds i = if Map.lookup i allIndices == Nothing then i else QIndex (Maybe.fromJust $ Map.lookup i allIndices) (iSpace i) (isDummy i)
--- bug? --         
--- bug? --     ten = fmap (changeInds) (tTensor t)
 
 -- Returns all the possible configurations for a given term
 allRenames :: QTerm -> QTerms
@@ -356,10 +396,10 @@ allRenames term = zipWith (replaceTerms) allPattern dummyTerms
   where
     patterns = [x ++ y ++ z ++ v| x <- cAll, y <- aAll, z <- vAll, v <- gAll]
     allPattern = fmap (Map.fromList) patterns
-    cAll = cAllMap $ getSummedBody term
-    aAll = aAllMap $ getSummedBody term
-    vAll = vAllMap $ getSummedBody term
-    gAll = gAllMap $ getSummedBody term
+    cAll = allMapBase Core    $ getSummedBody term
+    aAll = allMapBase Active  $ getSummedBody term
+    vAll = allMapBase Virtual $ getSummedBody term
+    gAll = allMapBase Generic $ getSummedBody term    
     dummyTerms = take (length allPattern) $ repeat term
 
     replaceTerms pattern t = QTerm (tNum t) (tCoeff t) ten
@@ -367,24 +407,18 @@ allRenames term = zipWith (replaceTerms) allPattern dummyTerms
         changeInds tenten = QTensor (tLabel tenten) inds (tSymm tenten) (tComm tenten)
           where
             inds = fmap (replaceInds) $ tIndices tenten
-            replaceInds i = if Map.lookup i pattern == Nothing then i else QIndex (Maybe.fromJust $ Map.lookup i pattern) (iSpace i) (isDummy i)
+            replaceInds i = if Map.lookup i pattern == Nothing then i else QIndex (Maybe.fromJust $ Map.lookup i pattern) (iSpace i) (iSpin i) (isDummy i)
   
         ten = fmap (changeInds) (tTensor t)
 
--- Returns all the possibly ordered tensors
+-- Returns all the possibly ordered tensors (Make sure this algorithm swaps the operators as well the c-tensors)    
 rotateTensors :: QTerm -> QTerms
 rotateTensors term = fmap makeTerms tensors
   where
-    tensors = List.permutations $ tTensor term
+    classicalTensors = filter (\x -> tComm x == Classical) $ tTensor term
+    operatorTensors  = filter (\x -> tComm x == Operator)  $ tTensor term    
+    tensors = fmap (\x -> x ++ operatorTensors) $ List.permutations classicalTensors
     makeTerms t = QTerm (tNum term) (tCoeff term) t
-
--- Messy! -- -- Rotate all the indices of each tensor in a given term
--- Messy! -- rotateAllIndices :: QTerm -> QTerms
--- Messy! -- rotateAllIndices term = fmap makeTerms $ concat . head . foldl allPossible [] . tensors
--- Messy! --   where
--- Messy! --     tensors = fmap tgetConfs $ tTensor term
--- Messy! --     allPossible (xs:ys:xss) = (++) <$> xs <*> ys : xss
--- Messy! --     makeTerms t = QTerm (tNum term) (tCoeff term) t
 
 -- Rotate all the indices of each tensor in a given term
 rotateAllIndices :: QTerm -> QTerms
@@ -397,48 +431,16 @@ rotateAllIndices term = fmap makeTerms $ Utils.makeCombi tensors
 generateAllConfs :: QTerm -> QTerms
 generateAllConfs term = concat . fmap (rotateAllIndices) $ concat . fmap (rotateTensors) $ allRenames term
 
--- -- Kill Kronecker's delta
--- killKDeltas :: QTerm -> Maybe QTerm
--- killKDeltas term = Just (QTerm (tNum term) (tCoeff term) exceptkDeltas) 
--- --killKDeltas term = if oldSpace == newSpace then Just (QTerm (tNum term) (tCoeff term) exceptkDeltas) else Nothing
---   where
---     -- First, construct a Map [(killed Index, killer Index)]
---     tensors = tTensor term
---     kdList  = [x | x <- tensors, tLabel x == "kD"]
---     mkMap   = Map.fromList $ fmap killSchedule kdList
---     killSchedule kDelta
---       |     (isDummy ind1) &&     (isDummy ind2) && (iSpace ind1 == Generic) = (ind1, ind2)
---       |     (isDummy ind1) &&     (isDummy ind2) && (iSpace ind2 == Generic) = (ind2, ind1)
---       |     (isDummy ind1) && not (isDummy ind2) && (iSpace ind1 == Generic) = (ind1, ind2)
---       | not (isDummy ind1) &&     (isDummy ind2) && (iSpace ind2 == Generic) = (ind2, ind1)                                                                               
---       |     (isDummy ind1) && not (isDummy ind2)                             = (ind1, ind2)
---       | not (isDummy ind1) &&     (isDummy ind2)                             = (ind2, ind1)
---       |     (isDummy ind1) &&     (isDummy ind2)                             = (ind1, ind2)
---       | not (isDummy ind1) && not (isDummy ind2) && (iSpace ind1 == Generic) = (ind1, ind2)
---       | not (isDummy ind1) && not (isDummy ind2) && (iSpace ind2 == Generic) = (ind2, ind2)
---       | not (isDummy ind1) && not (isDummy ind2)                             = (ind2, ind2)
---       | otherwise = error "Algorithmic error"
---       where
---         ind1 = (tIndices kDelta) !! 0
---         ind2 = (tIndices kDelta) !! 1
---     -- Then, construct new tensors 
---     newTensors = fmap (Utils.repeatN replaceTensor (length kdList)) tensors
---     replaceTensor tenten = QTensor (tLabel tenten) inds (tSymm tenten) (tComm tenten)
---       where
---         inds = fmap (replaceInds) $ tIndices tenten
---         replaceInds i = if Map.lookup i mkMap == Nothing then i  else Maybe.fromJust $ Map.lookup i mkMap
---     -- If index spaces are same return newTensor else all are Nothing
---     oldSpace = fmap (iSpace) $ concat $ map (tIndices) tensors
---     newSpace = fmap (iSpace) $ concat $ map (tIndices) newTensors
---     --exceptkDeltas = [x | x <- newTensors, not (tLabel x == "kD" && (tIndices x) !! 0 == (tIndices x) !! 1)]
---     exceptkDeltas = [x | x <- newTensors]    
-
 -- Kill Kronecker's delta (Still buggy??)
+-- In the current implementation, the SpinOrbital indices cannot be handled.
 killKDeltas :: QTerm -> Maybe QTerm
 killKDeltas term
+  | hasSO              = error "killKDeltas: SpinOrbital index detected. Please decompose such indices into the other types of the spin indices first."
   | length kdList == 0 = Just term
   | otherwise          = if foldr (||) False $ fmap isZero kdList then Nothing else Just (QTerm (tNum term) (tCoeff term) exceptkDeltas)
   where
+    hasSO = foldl (||) False $ fmap (\x -> iSpin x == SpinOrbital) $ concat . fmap tIndices $ tTensor term
+      
     -- First, construct a Map [(killed Index, killer Index)]
     tensors = tTensor term
     kdList  = [x | x <- tensors, tLabel x == kDName_]
@@ -446,11 +448,13 @@ killKDeltas term
     isZero :: QTensor -> Bool
     isZero kd =
       let
-        ind1 = (tIndices kd) !! 0
-        ind2 = (tIndices kd) !! 1
+        ind1   = (tIndices kd) !! 0
+        ind2   = (tIndices kd) !! 1
         space1 = iSpace ind1
         space2 = iSpace ind2
-      in space1 /= space2 && space1 /= Generic && space2 /= Generic
+        spin1  = iSpin ind1
+        spin2  = iSpin ind2        
+      in space1 /= space2 && space1 /= Generic && space2 /= Generic || spin1 /= spin2
 
     mkMap   = Map.fromList $ fmap killSchedule kdList
     killSchedule kDelta
@@ -475,40 +479,13 @@ killKDeltas term
         inds = fmap (replaceInds) $ tIndices tenten
         replaceInds i = if Map.lookup i mkMap == Nothing then i  else Maybe.fromJust $ Map.lookup i mkMap
     exceptkDeltas = [x | x <- newTensors, not (tLabel x == kDName_ && (tIndices x) !! 0 == (tIndices x) !! 1)]
-    --exceptkDeltas = [x | x <- newTensors]    
-
--- svd -- -- Function to return the combined terms. This can be implemented by using State monad more elegantly?
--- svd -- combineTerms :: QTerms -> QTerms
--- svd -- combineTerms terms = filter (\x -> (tNum x) /= 0.0) $ fmap (changeFactors) origTerms
--- svd --   where
--- svd --     maxTerms = fmap (maximum . generateAllConfs) terms
--- svd --     origTerms = List.nub $ fmap (makeUniTerm) maxTerms
--- svd -- 
--- svd --     makeUniTerm :: QTerm -> QTerm 
--- svd --     makeUniTerm kore = QTerm 1.0 (tCoeff kore) (tTensor kore)
--- svd -- 
--- svd --     changeFactors :: QTerm -> QTerm
--- svd --     changeFactors are = baseTerm myFactor (tCoeff are) (tTensor are)
--- svd --       where myFactor = collectFactors are maxTerms
--- svd -- 
--- svd --     collectFactors :: QTerm -> QTerms -> Double
--- svd --     collectFactors kore korera = 
--- svd --       let
--- svd --         arera = [x | x <- korera, isAdditive kore x]
--- svd --       in sum $ fmap (tNum) arera
 
 -- Function to return the combined terms. This can be implemented by using State monad more elegantly?
 combineTerms :: QTerms -> QTerms
 combineTerms terms = filter (\x -> (tNum x) /= 0.0) $ fmap (changeFactors) origTerms
   where
-    maxTerms = fmap (maximum . generateConfs) terms
+    maxTerms = fmap canonicalizeTerm terms
     origTerms = List.nub $ fmap (makeUniTerm) maxTerms
-
-    generateConfs :: QTerm -> QTerms
-    generateConfs konoTerm = if length konoTensor == (length $ List.nub konoTensor)
-                             then concat . fmap (rotateAllIndices) $ allRenames konoTerm
-                             else generateAllConfs konoTerm
-      where konoTensor = tTensor konoTerm
 
     makeUniTerm :: QTerm -> QTerm 
     makeUniTerm kore = QTerm 1.0 (tCoeff kore) (tTensor kore)
@@ -523,504 +500,55 @@ combineTerms terms = filter (\x -> (tNum x) /= 0.0) $ fmap (changeFactors) origT
         arera = [x | x <- korera, isAdditive kore x]
       in sum $ fmap (tNum) arera
 
+-- Canonicalize the representation of the QTerm object
+canonicalizeTerm :: QTerm -> QTerm
+canonicalizeTerm konoTerm = if length possibility /= 0 then baseTerm newFactor (tCoeff konoTerm) (tTensor myMax) else konoTerm
+  where
+    newFactor   = (tNum konoTerm) * (tNum myMax)
+    myMax       = maximum possibility
+    possibility = normalizeTerms konoTerm
+
+    -- Body of the function
+    normalizeTerms :: QTerm -> QTerms
+    normalizeTerms thisTerm
+      | length koreraTensor == (length $ List.nub koreraTensor) = concat . fmap (rotateAllIndices) $ allRenames canonicalConf
+      | otherwise                                               = generateAllConfs canonicalConf
+      where
+        koreraTensor    = fmap tLabel $ tTensor thisTerm
+        canonicalTensor = (List.sortBy (\x y -> (tLabel x) `compare` (tLabel y)) $ filter (\x -> tComm x == Classical) $ tTensor thisTerm) ++ (filter (\x -> tComm x == Operator) $ tTensor thisTerm)
+        canonicalConf   = baseTerm (1.0) [] canonicalTensor 
+        
 ---------------------------------------------------------------------------------------------
 -- Small utilities
 ---------------------------------------------------------------------------------------------
     
--- fucntion returns all the renaming combinations for core indices
-cAllMap :: QIndices -> [[(QIndex, String)]]
-cAllMap [] = []
-cAllMap inds = zipWith (zipWith (\x y -> (x,y))) allFst allRenames
+-- The generalized function for above all the functions
+allMapBase :: QSpace -> QIndices -> [[(QIndex, String)]]
+allMapBase _ [] = []
+allMapBase myLabel inds = zipWith (zipWith (\x y -> (x,y))) allFst allRenames
   where 
-    zipFst     = fmap fst $ cMap inds 0
-    allRenames = List.permutations $ fmap snd $ cMap inds 0
-    allFst     = take (length allRenames) $ repeat zipFst 
-
--- Fucntion returns all the renaming combinations for active indices
-aAllMap :: QIndices -> [[(QIndex, String)]]
-aAllMap [] = []
-aAllMap inds = zipWith (zipWith (\x y -> (x,y))) allFst allRenames
-  where 
-    zipFst     = fmap fst $ aMap inds 0
-    allRenames = List.permutations $ fmap snd $ aMap inds 0
-    allFst     = take (length allRenames) $ repeat zipFst 
-
--- Fucntion returns all the renaming combinations for virtual indices
-vAllMap :: QIndices -> [[(QIndex, String)]]
-vAllMap [] = []
-vAllMap inds = zipWith (zipWith (\x y -> (x,y))) allFst allRenames
-  where 
-    zipFst     = fmap fst $ vMap inds 0
-    allRenames = List.permutations $ fmap snd $ vMap inds 0
-    allFst     = take (length allRenames) $ repeat zipFst 
-
--- Fucntion returns all the renaming combinations for generic indices
-gAllMap :: QIndices -> [[(QIndex, String)]]
-gAllMap [] = []
-gAllMap inds = zipWith (zipWith (\x y -> (x,y))) allFst allRenames
-  where 
-    zipFst     = fmap fst $ gMap inds 0
-    allRenames = List.permutations $ fmap snd $ gMap inds 0
+    zipFst     = fmap fst $ mapBase myLabel inds 0
+    allRenames = List.permutations $ fmap snd $ mapBase myLabel inds 0
     allFst     = take (length allRenames) $ repeat zipFst
-
----------------------------------------------------------------------------------------------    
----------------------------------------------------------------------------------------------
--- Function to extract dummy core indices
-cMap :: QIndices -> Int -> [(QIndex, String)]
-cMap [] _ = []
-cMap (i:is) num
-  | (iSpace i) == Core && (isDummy i) == Dummy = [(i, "c" ++ show num)] ++ (cMap is (num+1))
-  | otherwise                                  = cMap is num
-
--- Function to extract dummy active indices
-aMap :: QIndices -> Int -> [(QIndex, String)]
-aMap [] _ = []
-aMap (i:is) num
-  | (iSpace i) == Active && (isDummy i) == Dummy = [(i, "a" ++ show num)] ++ (aMap is (num+1))
-  | otherwise                                    = aMap is num
-
--- Function to extract dummy virtual indices
-vMap :: QIndices -> Int -> [(QIndex, String)]
-vMap [] _ = []
-vMap (i:is) num
-  | (iSpace i) == Virtual && (isDummy i) == Dummy = [(i, "v" ++ show num)] ++ (vMap is (num+1))
-  | otherwise                                     = vMap is num
-
--- Functon to extract dummy generic indices
-gMap :: QIndices -> Int -> [(QIndex, String)]
-gMap [] _ = []
-gMap (i:is) num
-  | (iSpace i) == Generic && (isDummy i) == Dummy = [(i, "g" ++ show num)] ++ (gMap is (num+1))
-  | otherwise                                     = gMap is num
-
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
--- Normal ordering function for creation and annihilation operators
-normalOrderA :: QTerm -> QTerms
-normalOrderA term =
-  if length cres == length des then zipWith (makeTerm) signs kDeltas
-  else error "normalOrderA: Numbers of creation and annihilation operators should be equal for the current implementation"
-  where
-    tensors   = tTensor term
-    operators = [x | x <- tensors, tLabel x == creName_ || tLabel x == desName_]
-    others    = [x | x <- tensors, tLabel x /= creName_ && tLabel x /= desName_]
-    cres      = [x | x <- operators, tLabel x == creName_]
-    des       = [x | x <- operators, tLabel x == desName_]
-    contPairs = [(x, y) | x <- cres, y <- des]
-
-    -- Actually survived contraction pairs
-    survivedPairs = fmap (fmap reorderOps) $ filter (makeAllOps) $ Utils.binCombi (length cres) contPairs
-    flatPairs     = fmap Utils.makeFlat survivedPairs
-    signs         = fmap (Utils.permuteSign operators) flatPairs
-
-    kDeltas = fmap (fmap makekDeltas) survivedPairs
-
-    -- Returns proper contraction pairs (assuming all index pairs are composed of one creation and one annihilation operators)
-    reorderOps :: (QTensor, QTensor) -> (QTensor, QTensor)
-    reorderOps (op1, op2)
-      | iSpace ((tIndices op1) !! 0) == Virtual && iSpace ((tIndices op2) !! 0) == Virtual = (op2, op1)
-      | iSpace ((tIndices op1) !! 0) == Generic && iSpace ((tIndices op2) !! 0) == Virtual = (op2, op1)
-      | iSpace ((tIndices op1) !! 0) == Virtual && iSpace ((tIndices op2) !! 0) == Generic = (op2, op1)
-      | iSpace ((tIndices op1) !! 0) == Active  || iSpace ((tIndices op2) !! 0) == Active  = error "normalOrderA: Can't handle index for the active MOs"
-      | otherwise = (op1, op2)
-                                                                                         
-    makeTerm :: Int -> QTensors -> QTerm
-    makeTerm sign kDs = QTerm ((fromIntegral sign)*(tNum term)) (tCoeff term) (others ++ kDs)
-
-    makekDeltas :: (QTensor, QTensor) -> QTensor
-    makekDeltas (ind1, ind2) = baseKD $ (tIndices ind1) ++ (tIndices ind2)
     
-    makeAllOps :: [(QTensor, QTensor)] -> Bool
-    makeAllOps contras = (makeCre contras) && (makeDes contras)
-      where
-        makeCre kore = (List.sort $ fmap (fst) kore) == List.sort cres
-        makeDes are  = (List.sort $ fmap (snd) are)  == List.sort des
-
-
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
--- Normal ordering function for spin-dependent excitation operators
-normalOrderG :: QTerm -> QTerms
-normalOrderG term = zipWith (makeTerm) signs kDeltas
+-- The generalized function for above all the functions
+mapBase :: QSpace -> QIndices -> Int -> [(QIndex, String)]
+mapBase _ [] _ = []
+mapBase mySpace (i:is) num
+  | (iSpace i) == mySpace && (isDummy i) == Dummy = [(i, myLabel ++ show num)] ++ (mapBase mySpace is (num+1))
+  | otherwise                                     = mapBase mySpace is num
   where
-    tensors   = tTensor term
-    operators = [x | x <- tensors, take (length sdGenName_) (tLabel x) == sdGenName_]
-    others    = [x | x <- tensors, take (length sdGenName_) (tLabel x) /= sdGenName_]
-
-    -- Extract groups of creation and annihilation operators of generator
-    creGroup = fmap (transformCre) operators
-    desGroup = fmap (transformDes) operators
-    opGroup  = fmap (transformBoth) operators
-
-    cres = concat creGroup
-    des  = concat desGroup
-    ops  = concat opGroup
-    conPairs = [(x, y) | x <- cres, y <- des]
-
-    -- List of fully-contracted operator pairs 
-    survivedPairs = fmap (fmap reorderOps) $ filter (makeAllOps) $ Utils.binCombi (length cres) conPairs
-    deadPairs = concat $ fmap (makeDeadPairs) opGroup
-    allPairs = filter (isAlive) survivedPairs
+    myLabel = returnLabel mySpace
     
-    flatPairs = fmap Utils.makeFlat allPairs
-    signs     = fmap (Utils.permuteSign ops) flatPairs
-
-    kDeltas = fmap (fmap makekDeltas) allPairs
-
-    -- Returns proper contraction pairs (assuming all index pairs are composed of one creation and one annihilation operators)
-    reorderOps :: (QIndex, QIndex) -> (QIndex, QIndex)
-    reorderOps (op1, op2)
-      | iSpace op1 == Virtual && iSpace op2 == Virtual = (op2, op1)
-      | iSpace op1 == Generic && iSpace op2 == Virtual = (op2, op1)
-      | iSpace op1 == Virtual && iSpace op2 == Generic = (op2, op1)
-      | iSpace op1 == Active  || iSpace op2 == Active  = error "normalOrderG: Can't handle index for the active MOs"
-      | otherwise = (op1, op2)
-
-    -- If contras contains either f the dear pairs, contras vanish
-    isAlive :: [(QIndex, QIndex)] -> Bool
-    isAlive contras = not $ allNothing deadPairs
-      where
-        allNothing [x]    = x `elem` contras
-        allNothing (x:xs) = x `elem` contras || allNothing xs
-
-    -- Make list of intra-group contractions
-    makeDeadPairs :: QIndices -> [(QIndex, QIndex)]
-    makeDeadPairs opList =
-      let
-        order = floor $ (fromIntegral . length $ opList)/2
-        creOps = take order opList
-        desOps = take order $ reverse opList
-      in [(x,y) | x <- creOps, y <- desOps]
-    
-    transformCre :: QTensor -> QIndices
-    transformCre sdGen = 
-      let
-        order = floor $ (fromIntegral $ length $ tIndices sdGen) / (fromIntegral 2)
-      in take order (tIndices sdGen)
-
-    transformDes :: QTensor -> QIndices
-    transformDes sdGen = 
-      let
-        order = floor $ (fromIntegral $ length $ tIndices sdGen) / (fromIntegral 2)
-      in take order $ reverse (tIndices sdGen)
-
-    transformBoth :: QTensor -> QIndices
-    transformBoth sdGen = (transformCre sdGen) ++ (transformDes sdGen)
-
-    makeAllOps :: [(QIndex, QIndex)] -> Bool
-    makeAllOps contras = (makeCre contras) && (makeDes contras)
-      where
-        makeCre kore = (List.sort $ fmap (fst) kore) == List.sort cres
-        makeDes are  = (List.sort $ fmap (snd) are)  == List.sort des
-
-    makeTerm :: Int -> QTensors -> QTerm
-    makeTerm sign kDs = QTerm ((fromIntegral sign)*(tNum term)) (tCoeff term) (others ++ kDs)
-
-    makekDeltas :: (QIndex, QIndex) -> QTensor
-    makekDeltas (ind1, ind2) = baseKD $ ind1 : ind2 : []
-
-
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
--- Normal ordering function for spin-free excitaiton operators
-normalOrderE :: QTerm -> QTerms
-normalOrderE term = if length otherOps /= 0
-                    then error "normalOrderE: Normal ordering among other types of excitation operators is not yet implemented."
-                    else iterateNormalOrder restEops [initTerm]
-  where
-    tensors   = tTensor term
-    operators = [x | x <- tensors, take (length sfGenName_) (tLabel x) == sfGenName_]
-    others    = [x | x <- tensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
-    otherOps  = [x | x <- others, tComm x == Operator]        
-    initTerm  = makeTerm' $ others ++ [operators !! (length operators-1)]
-    restEops  = take (length operators-1) operators
-    numSteps  = (length operators) - 1
-
-    iterateNormalOrder :: QTensors -> QTerms -> QTerms
-    iterateNormalOrder restEs currentTerms
-      | length restEs == 0 = currentTerms
-      | otherwise          = iterateNormalOrder (init restEs) orderedTerms
-      where
-        newTensors   = zipWith (:) ( replicate (length currentTerms) (last restEs) ) $ fmap (tTensor) currentTerms
-        newTerms     = fmap (makeTerm') newTensors -- :: QTerms
-        orderedTerms = concat $ fmap (contractGen) newTerms
-        
-    -- Returns terms with correct prefactors and tensors
-    makeTerm' :: QTensors -> QTerm
-    makeTerm' tenten = baseTerm (tNum term) (tCoeff term) (tenten)
-
-
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
--- Normal ordering function for the multiple commutators of the spin-free excitaiton operators, [E1, [E2, [E3, .. En]] .. ]
-normalOrderCommE :: QTerm -> QTerms
-normalOrderCommE term = if length otherOps /= 0
-                    then error "normalOrderCommE: Normal ordering among other types of excitation operators is not yet implemented."
-                    else iterateNormalOrder restEops [initTerm]
-  where
-    tensors   = tTensor term
-    operators = [x | x <- tensors, take (length sfGenName_) (tLabel x) == sfGenName_]
-    others    = [x | x <- tensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
-    otherOps  = [x | x <- others, tComm x == Operator]    
-    initTerm  = makeTerm' (tNum term) $ others ++ [operators !! (length operators-1)]
-    restEops  = take (length operators-1) operators
-    numSteps  = (length operators) - 1
-
-    iterateNormalOrder :: QTensors -> QTerms -> QTerms
-    iterateNormalOrder restEs currentTerms
-      | length restEs == 0 = currentTerms
-      | otherwise          = iterateNormalOrder (init restEs) orderedTerms
-      where
-        newTensors   = zipWith (:) ( replicate (length currentTerms) (last restEs) ) $ fmap (tTensor) currentTerms
-        factors      = fmap (tNum) currentTerms
-        newTerms     = zipWith (makeTerm') factors newTensors -- :: QTerms
-        orderedTerms = concat $ fmap (contractComm) newTerms
-        
-    -- Returns terms with correct prefactors and tensors
-    makeTerm' :: Double -> QTensors -> QTerm
-    makeTerm' myFactor tenten = baseTerm myFactor (tCoeff term) (tenten)
-
-    -- Returns normal ordered results of [E1, E2]
-    contractComm :: QTerm -> QTerms
-    contractComm thisTerm
-      | length es > 2  = error "contractComm: Length of operators given should be  shorter than or equal to 2."
-      | length es == 2 = withoutMaximum_e1e2 ++ withoutMaximum_e2e1
-      | otherwise      = [thisTerm]
-      where
-        thisTensors = tTensor thisTerm 
-        commutables = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
-        es = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) == sfGenName_]
-        negativeTerm = baseTerm (negate $ tNum thisTerm) (tCoeff thisTerm) (commutables ++ [es !! 1, es !! 0])
-        withoutMaximum_e1e2 = filter (\x -> not $ isMaxE x) $ contractGen thisTerm
-        withoutMaximum_e2e1 = filter (\x -> not $ isMaxE x) $ contractGen negativeTerm
-
-        -- Returns true if the term has the generator of maximum rank that can be formed from E1 and E2
-        isMaxE :: QTerm -> Bool
-        isMaxE kore
-          | length myEs /= 1 = False
-          | otherwise        = length (tIndices $ myEs !! 0) == length (tIndices $ es !! 0) + length (tIndices $ es !! 1)
-          where
-            myTensors = tTensor kore
-            myEs = [x | x <- myTensors, take (length sfGenName_) (tLabel x) == sfGenName_]
-
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
--- Contract given two spin-free excitation operators
-contractGen :: QTerm -> QTerms
-contractGen thisTerm
-  | (length otherOps) /= 0      = error "contractGen: Normal ordering with other type of operator is not yet implemented."
-  | (length incommutables)  > 2 = error "contractGen: Length of operators given should be shorter than or qeual to 2."
-  | (length incommutables) == 2 = concat . fmap (fmap makeTerm) $ fmap (makeContractions) [0..(min order1 order2)]
-  | otherwise                                             = [thisTerm]
-  where
-    thisTensors = tTensor thisTerm
-    commutables   = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) /= sfGenName_]
-    incommutables = [x | x <- thisTensors, take (length sfGenName_) (tLabel x) == sfGenName_]
-    otherOps      = [x | x <- commutables, tComm x == Operator]
-    e1 = incommutables !! (length incommutables-2)
-    e2 = incommutables !! (length incommutables-1)
-    order1     = floor $ (fromIntegral $ length $ tIndices e1) / (fromIntegral 2)
-    order2     = floor $ (fromIntegral $ length $ tIndices e2) / (fromIntegral 2)
-    upperInds1 = take (order1) (tIndices e1)
-    upperInds2 = take (order2) (tIndices e2)
-    lowerInds1 = reverse $ take (order1) $ reverse (tIndices e1)
-    lowerInds2 = reverse $ take (order2) $ reverse (tIndices e2) 
-
-    -- Lower indices of e1 and upper indices of e2 are used to make contraction
-    contPairs = [(x, y) | x <- lowerInds1, y <- upperInds2]
-    e1PairInds = Map.fromList $ zip lowerInds1 upperInds1  -- -> Lower indices are keys -> Upper indices
-    e2PairInds = Map.fromList $ zip upperInds2 lowerInds2  -- -> Upper indices are keys -> Lower indices
-
-    e1Pairs = zip upperInds1 lowerInds1  
-    e2Pairs = zip upperInds2 lowerInds2  
-
-    e1Maps = Map.fromList $ zip upperInds1 e1Pairs  -- -> Upper indices are keys -> (Upper, Lower)
-    e2Maps = Map.fromList $ zip lowerInds2 e2Pairs  -- -> Lower indices are keys -> (Upper, Lower)
-
-    -- Returns terms with correct prefactors and tensors
-    makeTerm :: QTensors -> QTerm
-    makeTerm tenten = baseTerm (tNum thisTerm) (tCoeff thisTerm) (commutables ++ tenten)
-
-    -- Returns contracted operators [input; contraction order]
-    makeContractions :: Int -> [QTensors]
-    makeContractions myOrder = filter (isAppropriate) $ zipWith (:) (fmap (baseSFGen) $ fmap (Utils.makeFlat2) totalInds) kDeltas
-      where
-        myContractions = Utils.binCombi myOrder contPairs
-        kDeltas      = fmap (fmap makeKD) myContractions       -- Kronecker's deltas [[kDs]]
-        newPairs     = fmap (fmap makeNewPairs) myContractions -- Newly formed pairs [[(uind_e1, lind_e2)]]
-        -----------------------------
-        deadE1Pairs  = fmap (fmap Maybe.fromJust) $ fmap (filter (\x -> x /= Nothing)) $ fmap (fmap findDeadE1) $ fmap (fmap fst) newPairs
-          where
-            findDeadE1 :: QIndex -> Maybe (QIndex, QIndex)
-            findDeadE1 konoIndex = if Map.lookup konoIndex e1Maps /= Nothing then Map.lookup konoIndex e1Maps else Nothing
-        
-        deadE2Pairs  = fmap (fmap Maybe.fromJust) $ fmap (filter (\x -> x /= Nothing)) $ fmap (fmap findDeadE2) $ fmap (fmap snd) newPairs
-          where
-            findDeadE2 :: QIndex -> Maybe (QIndex, QIndex)
-            findDeadE2 konoIndex = if Map.lookup konoIndex e2Maps /= Nothing then Map.lookup konoIndex e2Maps else Nothing
-        -----------------------------
-        aliveE1Pairs = fmap (isAliveE1) deadE1Pairs
-        aliveE2Pairs = fmap (isAliveE2) deadE2Pairs            
-        totalInds    = zipWith (++) aliveE1Pairs $ zipWith (++) aliveE2Pairs newPairs
-
-        makeKD :: (QIndex, QIndex) -> QTensor
-        makeKD (lind1, uind2) = baseKD [lind1, uind2]
-
-        makeNewPairs :: (QIndex, QIndex) -> (QIndex, QIndex)
-        makeNewPairs (lind1, uind2) = (Maybe.fromJust $ Map.lookup lind1 e1PairInds, Maybe.fromJust $ Map.lookup uind2 e2PairInds) -- -> Return (Upper, Lower) pairs
-
-        isAliveE1 :: [(QIndex, QIndex)] -> [(QIndex, QIndex)]
-        isAliveE1 koreraE1 = [x| x <- e1Pairs, not $ x `elem` koreraE1]
-
-        isAliveE2 :: [(QIndex, QIndex)] -> [(QIndex, QIndex)]
-        isAliveE2 koreraE2 = [x| x <- e2Pairs, not $ x `elem` koreraE2]
-
-        isAppropriate :: QTensors -> Bool
-        isAppropriate tenten = List.sort (myIndices) == List.sort (Utils.makeFlat $ e1Pairs ++ e2Pairs)
-          where
-            myIndices = concat $ fmap (tIndices) tenten
-        
-
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
--- Construct spin-free density matrix from the normal ordered spin-free generators by taking the vacuum expectaiton values
-takeVEV :: QTerms -> QTerms
-takeVEV terms = fmap Maybe.fromJust $ filter (\x -> x /= Nothing) $ fmap (uniVEV) terms
-  where
-    -- VEV for one term
-    uniVEV :: QTerm -> Maybe QTerm
-    uniVEV term
-      | length sfOps > 1 = Just term
-      | otherwise        = if Virtual `elem` allSpaces then Nothing else Just newTerm
-      where
-        tensors = tTensor term
-        sfOps = [x | x <- tensors, take (length sfGenName_) (tLabel x) == sfGenName_]
-        allSpaces = fmap (iSpace) $ concat $ fmap (tIndices) sfOps
-        newTerm = baseTerm (tNum term) (tCoeff term) (fmap (makeNewTensor) tensors)　
-
-        makeNewTensor :: QTensor -> QTensor
-        makeNewTensor konoTensor
-          | take (length sfGenName_) (tLabel konoTensor) == sfGenName_ = baseSFRDM (tIndices konoTensor)
-          | otherwise                                                  = konoTensor
-
-
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
--- Contract core operator in the spin-free density matrix
-contractCoreSF :: QTerm -> QTerms
-contractCoreSF thisTerm
-  | length rdms /= 1                       = [thisTerm]
-  | length ucorePairs /= length lcorePairs = []
-  | otherwise                              = zipWith3 baseTerm newFactors newCoeffs newTensors
-  where
-    factor  = tNum thisTerm
-    tensors = tTensor thisTerm
-    rdms    = [x | x <- tensors, take (length sfRDMName_) (tLabel x) == sfRDMName_]
-    others  = [x | x <- tensors, take (length sfRDMName_) (tLabel x) /= sfRDMName_]
-    theRDM  = rdms !! 0
-    order   = floor $ (fromIntegral $ length $ tIndices theRDM) / (fromIntegral 2)
-
-    -- Index-Number pairs [(QIndex, Int)]
-    indPairs   = zip (tIndices theRDM) [0..((length $ tIndices theRDM)-1)]
-    upperPairs = take (order) indPairs
-    lowerPairs = fmap (\(x,y)->(x,y-order)) $ reverse $ take (order)$ reverse indPairs 
-
-    -- Number-Index pairs [(Int, QIndex)]
-    numPairs  = fmap (\(x,y)->(y,x)) indPairs
-    unumPairs = fmap (\(x,y)->(y,x)) upperPairs
-    lnumPairs = fmap (\(x,y)->(y,x)) lowerPairs
-
-    ------------------
-    unumMap   = Map.fromList unumPairs -- Position :: Int -> QIndex
-    lnumMap   = Map.fromList lnumPairs -- Position :: Int -> QIndex
-    ------------------
-    
-    ucorePairs = [x | x <- upperPairs, (iSpace $ fst x) == Core]
-    lcorePairs = [x | x <- lowerPairs, (iSpace $ fst x) == Core]
-    
-    ucPos = fmap (snd) ucorePairs -- Position of the upper core index
-    lcPos = fmap (snd) lcorePairs -- Position of the lower core index
-
-    -- Form the core contraction pairs to constract the Kronecker's delta
-    lcTemp = List.permutations lcPos
-    ucTemp = take (length lcTemp) $ repeat ucPos
-    corePos = zip ucTemp lcTemp
-
-    ------------------------------------
-    -- Body of this function -----------
-    ------------------------------------
-    kDeltas   = fmap formKDeltas corePos
-    newGenPos = fmap formNewGen corePos
-    newGens   = fmap formSFGen newGenPos
-    --totalPos  = zipWith (combineListP) corePos newGenPos
-    totalPos  = zipWith (\(x1,y1) (x2,y2) -> (x1++x2, y1++y2)) corePos newGenPos    
-    signs     = fmap determineSign totalPos
-    factors   = fmap determineFactor corePos
-
-    newFactors = fmap (factor*) $ zipWith (*) signs factors
-    newTensors = fmap (++others) $ zipWith (combineTensorList) kDeltas newGens 
-    newCoeffs  = take (length newTensors) $ repeat (tCoeff thisTerm)
-    -------------------------------------
-    -------------------------------------
-    
-    -- Returns the index list for forming the new spin-free excitation operator
-    formNewGen :: ([Int], [Int]) -> ([Int], [Int])
-    formNewGen myCoreInds = if List.sort lncInds == List.sort newlncInds then (uncInds, newlncInds) else error "fromNewGen: Algorithmic error occured."
-      where
-        --ucMap = Map.fromList $ zip (fst myCoreInds) (snd myCoreInds) -- -> Upper index is a key -> lower index
-        lcMap = Map.fromList $ zip (snd myCoreInds) (fst myCoreInds) -- -> Lower index is a key -> upper index
-
-        uncInds    = filter (\x -> not $ x `elem` (fst myCoreInds)) [0..(order-1)]
-        lncInds    = filter (\x -> not $ x `elem` (snd myCoreInds)) [0..(order-1)]
-        newlncInds = fmap searchIndex uncInds
-        
-        -- Seeks for the lower index of the generator
-        searchIndex :: Int -> Int
-        searchIndex thisPos
-          | nextUc == Nothing                                     = thisPos
-          | not ((Maybe.fromJust nextUc) `elem` (snd myCoreInds)) = Maybe.fromJust nextUc
-          | otherwise                                             = searchIndex $ Maybe.fromJust nextUc
-          where nextUc = Map.lookup thisPos lcMap
-
-    -- Determine the factors of each term
-    determineFactor :: ([Int], [Int]) -> Double
-    determineFactor myCoreInds = fromIntegral $ 2 ^ (length $ Utils.decompPerm $ Utils.eliminatePerm myCoreInds)
-    
-    -- Determine the signs of the term
-    determineSign :: ([Int], [Int]) -> Double
-    determineSign myAllInds = fromIntegral $ Utils.permuteSign (fst myAllInds) (snd myAllInds)
-
-    -- Returns upper index
-    returnUInds :: Int -> QIndex
-    returnUInds myPos = if newPos == Nothing then error "returnUInds: Algorithmic error occured." else Maybe.fromJust newPos
-      where newPos = Map.lookup myPos unumMap
-
-    -- Returns lower index
-    returnLInds :: Int -> QIndex
-    returnLInds myPos = if newPos == Nothing then error "returnUInds: Algorithmic error occured." else Maybe.fromJust newPos
-      where newPos = Map.lookup myPos lnumMap
-
-    -- Form kdeltas
-    formKDeltas :: ([Int], [Int]) -> QTensors
-    formKDeltas myCoreInds = fmap (\(x,y) -> baseKD [x,y]) kDInds
-      where kDInds = zip (fmap returnUInds $ fst myCoreInds) (fmap returnLInds $ snd myCoreInds)
-
-    -- Form SFGen
-    formSFGen :: ([Int], [Int]) -> Maybe QTensor
-    formSFGen myGenInds
-      | length (fst myGenInds) /= 0 = Just $ baseSFRDM $ (fmap returnUInds (fst myGenInds)) ++ (fmap returnLInds (snd myGenInds))
-      | otherwise                   = Nothing
-
-    -- Combine the Maybe SFGen and Kronecker's deltas to form newTensors :: QTensors
-    combineTensorList :: QTensors -> Maybe QTensor -> QTensors
-    combineTensorList kds gen
-      | gen == Nothing = kds
-      | otherwise      = (Maybe.fromJust gen) : kds
-
---     -- Combine ([x], [y]) -> ([x'],[y']) -> ([x]++[x'],[y]++[y'])
---     combineListP :: (Ord a) => ([a], [a]) -> ([a], [a]) -> ([a], [a])
---     combineListP  (x1, y1) (x2, y2) = (x1++x2, y1++y2)
-        
+    -- Replacement label for the dummy indices defined here
+    returnLabel :: QSpace -> String
+    returnLabel n
+      | n == Core    = "c"
+      | n == Active  = "a"
+      | n == Virtual = "v"
+      | n == Generic = "g"
+      | otherwise    = error $ "mapBase: Can't handle this space >> " ++ (show n) ++ " << "
+                       
     
 ---------------------------------------------------------------------------------------------
 ---------------------------------------------------------------------------------------------
@@ -1035,7 +563,7 @@ generateInteractions targetSpaces thisTerm
       genInds = filter (\x -> iSpace x == Generic) indices
       numGens = length genInds
 
-      -- All possible combinations of MO spaces, [[C,C,C], [C,C,A], [C,A,C],..]
+      -- All possible combinations of MO spaces, [[C,C,C], [C,C,A], [C,A,C], ..]
       allSpaces = List.nub $ concat $ fmap List.permutations $ List.nub . filter (\x -> length x == numGens) $ List.subsequences $ concat $ fmap (\x -> take numGens $ repeat x) targetSpaces
 
       -- Replace the MO space of the term according to the given combinations of the QSpace
@@ -1048,7 +576,7 @@ generateInteractions targetSpaces thisTerm
 
           -- Unit replacement function
           uniReplace :: QSpace -> QIndex -> QIndex
-          uniReplace space index = QIndex (iLabel index) space (isDummy index)
+          uniReplace space index = QIndex (iLabel index) space (iSpin index) (isDummy index)
 
           -- Replace given tensor's indices according to the kill schedule
           replaceTensor :: QTensor -> QTensor
@@ -1064,18 +592,3 @@ generateInteractions targetSpaces thisTerm
                 where newInd = Map.lookup givenInd killSchedule
 
 
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
--- Screen terms with virtual operator in the spin-free reduced density matrix
-contractVirtSF :: QTerms -> QTerms
-contractVirtSF koreraTerms = filter (allClear) koreraTerms
-  where
-    allClear :: QTerm -> Bool
-    allClear kore
-      | length rdms   == 0 = True
-      | length virOps == 0 = True
-      | otherwise          = False
-      where
-        tensors = tTensor kore
-        rdms    = [x | x <- tensors, take (length sfRDMName_) (tLabel x) == sfRDMName_]
-        virOps  = filter (\x -> iSpace x == Virtual) $ List.nub $ concat $fmap (tIndices) rdms

@@ -1,4 +1,23 @@
+-- Copyright (C) 2013-2014 by Masaaki Saitow (msaitow514@gmail.com)
+--
+-- This program is free software; you can redistribute it and/or modify
+-- it under the terms of the GNU General Public License as published by
+-- the Free Software Foundation; either version 2 of the License, or
+-- (at your option) any later version
+--
+-- This program is distributed in the hope that it will be useful,
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+-- GNU General Public License for more details.
+--
+-- You should have received a copy of the GNU General Public License
+-- along with this program; if not, write to the Free Software
+-- Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA
 
+-----------------------------------
+-- Utility part of Fafnir module --
+-----------------------------------
+---module Fafnir.Utils
 module BraHKet.Utils
 (
   eliminatePerm, -- Returns the permutations by eliminating the redundant members  
@@ -70,23 +89,48 @@ repeatN :: (a -> a) -> Int -> a -> a
 repeatN f 1 x = f x
 repeatN f n x = f $ repeatN f (n-1) x
 
--- Returns a list of object composed of combinations of all the object in the initial list
-baseCombi :: (Ord a) => [[a]] -> Int -> [[a]]
-baseCombi xs count
-  | count /= 0 = [x:y    | x <- (xs !! ((length xs)-1)), y <- (baseCombi (init xs) (count-1))]
-  | otherwise  = [x:y:[] | x <- (xs !! 0), y <- (xs !! 1)]                 
+ -- -- Returns a list of object composed of combinations of all the object in the initial list
+ -- baseCombi :: (Ord a) => [[a]] -> Int -> [[a]]
+ -- baseCombi xs count
+ --   | count /= 0 = [x:y    | x <- (xs !! ((length xs)-1)), y <- (baseCombi (init xs) (count-1))]
+ --   | otherwise  = [x:y:[] | x <- (xs !! 0), y <- (xs !! 1)]                 
 
 -- Interface of the above function
 makeCombi :: (Ord a) => [[a]] -> [[a]]
-makeCombi xs = baseCombi xs ((length xs)-2) 
+makeCombi xs
+  | length xs == 0 = xs
+  | length xs == 1 = fmap (\x -> [x]) $ xs !! 0                     
+  | otherwise      = baseCombi xs ((length xs)-2)
+  where
+    -- Returns a list of object composed of combinations of all the object in the initial list
+    baseCombi :: (Ord a) => [[a]] -> Int -> [[a]]
+    baseCombi xs count
+      | count /= 0 = [x:y    | x <- (xs !! ((length xs)-1)), y <- (baseCombi (init xs) (count-1))]
+      | otherwise  = [x:y:[] | x <- (xs !! 0), y <- (xs !! 1)]                 
+
+-- old --  -- Permute list of object according to the given permutation
+-- old --  -- Make sure if the permutation is not a contiguous numbers, everything becomes crazy.
+-- old --  uniPerm :: (Ord a) => [Int] -> [a] -> [a]
+-- old --  uniPerm (x:xs) array
+-- old --    | length array < length xs = error "uniPerm: An invalid argument is given"
+-- old --    | length xs == 0           = [array !! x]
+-- old --    | otherwise                = (array !! x) : uniPerm xs array
 
 -- Permute list of object according to the given permutation
 -- Make sure if the permutation is not a contiguous numbers, everything becomes crazy.
 uniPerm :: (Ord a) => [Int] -> [a] -> [a]
-uniPerm (x:xs) array
-  | length array < length xs = error "An invalid argument is given"
-  | length xs == 0 = [array !! x]
-  | otherwise = (array !! x) : uniPerm xs array
+uniPerm perm arrays
+  | length perm   == 0                  = arrays
+  | length arrays == 0                  = arrays
+  | sort perm == [0..(length arrays)-1] = uniBody perm arrays
+  | otherwise                           = error "uniPerm: The input can't be a permutation"
+  where
+    -- Body of the function
+    uniBody :: (Ord a) => [Int] -> [a] -> [a]
+    uniBody (x:xs) array
+      -- | length array < length xs = error "uniPerm: An invalid argument is given"
+      | length xs == 0           = [array !! x]
+      | otherwise                = (array !! x) : uniBody xs array
 
 -- Small function that takes argumentes in reverse order to uniPerm
 uniPermR :: (Ord a) => [a] -> [Int] -> [a]
