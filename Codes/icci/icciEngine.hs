@@ -56,10 +56,10 @@ sigmaEngine leftOps rightOps
     myAmp    = baseTensor "@T2" tOps [[0,1,2,3],[1,0,3,2]] Classical
     actives  = filter (\x -> x == Active) $ fmap iSpace (leftOps ++ rightOps)
 
-    h  = baseOne   [w, x]       -- h^{w}_{x}
-    v  = baseERI   [w, x, y, z] -- v^{wx}_{yz}
-    eh = baseSFGen [w, x]       -- E^{w}_{x}
-    ev = baseSFGen [w, x, y, z] -- E^{wx}_{yz}
+    h  = baseOne   [g0, g1]         -- h^{g0}_{g1}
+    v  = baseERI   [g0, g1, g2, g3] -- v^{g0g1}_{g2g3}
+    eh = baseSFGen [g0, g1]         -- E^{g0}_{g1}
+    ev = baseSFGen [g0, g1, g2, g3] -- E^{g0g1}_{g2g3}
 
     -- s0 <-- <0| H Tr Er |0> 
     refICblock :: QIndices -> QTerms
