@@ -1,5 +1,9 @@
 
 ./*.o
 ./*.hi
+./Codes/*.o
+./Interface/*.o
+./Codes/*.hi
+./Interface/*.hi
 ./BraHKet/*.o
 ./BraHKet/*.hi
