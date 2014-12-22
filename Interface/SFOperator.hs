@@ -70,7 +70,7 @@ printList myList = do
 
 -- Convert each member in the given list into a formatted string
 strList :: (Show a) => (Ord a) => [a] -> String
-strList myList = foldl (++) "" $ fmap (\x -> x ++ "\n") $ zipWith (++) myNumbers $ fmap show myList
+strList myList = if length myList == 0 then "" else foldl (++) "" $ fmap (\x -> x ++ "\n") $ zipWith (++) myNumbers $ fmap show myList
   where myNumbers = fmap (\x -> "  [" ++ (show x) ++ "] " ) [0..(length myList)-1]
 
 ------------------------------------------------------------------------------------------------------------------------

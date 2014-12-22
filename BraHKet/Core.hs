@@ -461,7 +461,7 @@ killKDeltas term
       | (isDummy ind1 ==    Dummy) && (isDummy ind2 ==    Dummy) && (iSpace ind1 == Generic) = (ind1, ind2)
       | (isDummy ind1 ==    Dummy) && (isDummy ind2 ==    Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)
       | (isDummy ind1 ==    Dummy) && (isDummy ind2 == NonDummy) && (iSpace ind1 == Generic) = (ind1, ind2)
-      | (isDummy ind1 == NonDummy) && (isDummy ind2 ==    Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)                         
+      | (isDummy ind1 == NonDummy) && (isDummy ind2 ==    Dummy) && (iSpace ind2 == Generic) = (ind2, ind1)
       | (isDummy ind1 ==    Dummy) && (isDummy ind2 == NonDummy)                             = (ind1, ind2)
       | (isDummy ind1 == NonDummy) && (isDummy ind2 ==    Dummy)                             = (ind2, ind1)
       | (isDummy ind1 ==    Dummy) && (isDummy ind2 ==    Dummy)                             = (ind1, ind2)
