@@ -21,8 +21,6 @@
 
 -------------------------------------------------------------------------------------
 
-ここを改変
-
 # Overview
   
 **BraHKet is an heir to the symbolic manipulation engine in femto library, which is written in the object-oriented C++.** BraHKet heavily uses the abstract purely-functional programming technique to expand, combine and factorize the many-fermionic formulas. The user specified many-body ansatz (e.g., *Configuration Interaction*, *Coupled-Cluster*, or *Canonical Transformation* theory) is expanded according to the Wick's theorem to give the spin-free tensor contractions. 
